@@ -709,11 +709,8 @@ def run_tests(options1, args, print_version):
     if options.non_interactive == False:
         print_debug("\n", s, run_tests_log)
 
+    # Filling out ExecutionStatGatherer class with useful information about test completion
     
-    for jb in task_threads:
-        if not jb.exitcode == 0:
-            raise OSError(2, 'Some test subprocess has thrown an exception', '')
-
 
     temp_time = (time.time() - start_time)
     elapsed_time = time.strftime('%Hh%Mm%Ssec.', time.gmtime(temp_time))
@@ -723,6 +720,20 @@ def run_tests(options1, args, print_version):
         compile_error_files += c
         run_error_files += r
         skip_files += skip
+
+    common.ex_state.tests_total     = total_tests
+    common.ex_state.tests_completed = finished_tests_counter.value
+    common.ex_state.tests_skipped   = len(skip_files)
+    common.ex_state.tests_comperr   = len(compile_error_files)
+    common.ex_state.tests_failed    = len(run_error_files)
+    common.ex_state.tests_succeed   = total_tests - len(compile_error_files) - len(run_error_files) - len(skip_files)
+
+    common.ex_state.printout()
+
+
+    for jb in task_threads:
+        if not jb.exitcode == 0:
+            raise OSError(2, 'Some test subprocess has thrown an exception', '')
 
     if options.non_interactive:
         print_debug(" Done %d / %d\n" % (finished_tests_counter.value, total_tests), s, run_tests_log)

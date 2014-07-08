@@ -36,16 +36,65 @@ import sys
 import os
 import errno
 import shutil
+
+
+class TestTable:
+    def __init__(self, optimizations_, archs_, targets_, fnames_):
+        self.table = {}
+        self.optimizations = optimizations_
+        self.archs = archs_
+        self.targets = targets_
+        self.fnames = fnames_
+        
+        for arch in archs:
+            for optimization in optimizations:
+                for target in targets:
+                    self.table[arch][optimization][target] = fnames[0]
+
+    def arch_struct(self): 
+        return defaultdict(optimization_struct)
+
+    def optimization_struct(self):
+        return defaultdict(target_struct)
+    
+    def target_struct(self):
+        return dict(testname='', failed=0)
+
+    def printout(self):
+        for arch in archs:
+            for optimization in optimizations:
+                for target in targets:
+                    self.table[arch][optimization][target] = fnames[0]
+
+
 class ExecutionStatGatherer:
     def __init__(self):
-        optimizations = ['O0', 'O2']
-        architectures = ['x86', 'x86-64']
-        all_est_targets  = ['sse2-i32x4', 'sse2-i32x8', 'sse4-i32x4', 'sse4-i32x8', 'sse4-i16x8',
-                            'sse4-i8x16', 'avx1-i32x8', 'avx1-i32x16', 'avx1.1-i32x8', 
-                            'avx1.1-i32x16', 'avx2-i32x8', 'avx2-i32x16', 'generic-x1', 
-                            'generic-x4', 'generic-x8', 'generic-x16', 'generic-x32', 
-                            'generic-x64', 'knc']
+        self.optimizations = ['O0', 'O2']
+        self.architectures = ['x86', 'x86-64']
+        self.all_est_targets  = ["sse2-i32x4", "sse2-i32x8", "sse4-i32x4", "sse4-i32x8", "sse4-i16x8",
+                                 "sse4-i8x16", "avx1-i32x4" "avx1-i32x8", "avx1-i32x16", "avx1-i64x4", 
+                                 "avx1.1-i32x8", "avx1.1-i32x16", "avx1.1-i64x4", "avx2-i32x8", "avx2-i32x16", 
+                                 "avx2-i64x4", "generic-1", "generic-4", "generic-8", "generic-16", 
+                                 "generic-32", "generic-64", "knc"]
+        self.tests_total     = 0
+        self.tests_completed = 0
+        self.tests_skipped   = 0
+        self.tests_comperr   = 0
+        self.tests_failed    = 0
+        self.tests_succeed   = 0
 
+
+                
+        
+    def printout(self):
+        print("ESG: Done %d / %d" % (self.tests_completed, self.tests_total))
+        print("ESG: %d / %d tests SKIPPED:" % (self.tests_skipped, self.tests_total))
+        print("ESG: %d / %d tests FAILED compilation:" % (self.tests_comperr, self.tests_total))
+        print("ESG: %d / %d tests FAILED execution:" % (self.tests_failed, self.tests_total))
+        print("ESG: Passed %d / %d" % (self.tests_succeed, self.tests_total))
+
+
+ex_state = ExecutionStatGatherer() 
 
 def write_to_file(filename, line):
     f = open(filename, 'a')

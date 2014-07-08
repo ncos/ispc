@@ -721,15 +721,24 @@ def run_tests(options1, args, print_version):
         run_error_files += r
         skip_files += skip
 
-    common.ex_state.tests_total     = total_tests
-    common.ex_state.tests_completed = finished_tests_counter.value
-    common.ex_state.tests_skipped   = len(skip_files)
-    common.ex_state.tests_comperr   = len(compile_error_files)
-    common.ex_state.tests_failed    = len(run_error_files)
-    common.ex_state.tests_succeed   = total_tests - len(compile_error_files) - len(run_error_files) - len(skip_files)
+    non_succeed_files = skip_files + compile_error_files + run_error_files
+    run_succeed_files = [item for item in files if item not in non_succeed_files]
+
+    common.ex_state.tests_total     = common.ex_state.tests_total + total_tests
+    common.ex_state.tests_completed = common.ex_state.tests_completed + finished_tests_counter.value
+    common.ex_state.tests_skipped   = common.ex_state.tests_skipped + len(skip_files)
+    common.ex_state.tests_comperr   = common.ex_state.tests_comperr + len(compile_error_files)
+    common.ex_state.tests_failed    = common.ex_state.tests_failed + len(run_error_files)
+    common.ex_state.tests_succeed   = common.ex_state.tests_succeed + len(run_succeed_files)
+
 
     common.ex_state.printout()
+    for fname in compile_error_files:
+        test_ = Test(fname, 0, 1, 0)
+        common.ex_state.test_table.add(test_, 
 
+
+    #common.ex_state.test_table.add()
 
     for jb in task_threads:
         if not jb.exitcode == 0:

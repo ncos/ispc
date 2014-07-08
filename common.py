@@ -45,21 +45,17 @@ class Test:
         self.compfailed = compfailed_
         self.skipped = skipped_
 
+
 class TestTable:
     def __init__(self, optimizations_, archs_, targets_):
-        self.table = self.arch_struct()
         self.optimizations = optimizations_
         self.archs = archs_
         self.targets = targets_
-        
-        for arch in self.archs:
-            for optimization in optimizations:
-                for target in targets:
-                    self.table[arch][optimization][target] = []
+        self.table = self.arch_struct()
 
     def arch_struct(self):
         a = {}
-        for arch in  self.archs:
+        for arch in self.archs:
             a[arch] = self.optimization_struct()
         return a
 
@@ -76,24 +72,32 @@ class TestTable:
         return a
     
     def add(self, test, arch, opt, target):
-        self.table[arch][optimization][target] = []
+        if not test in self.table[arch][optimization][target]:
+            self.table[arch][optimization][target].append(test)
 
     def printout(self):
         for arch in self.archs:
-            for optimization in self.optimizations:
-                for target in self.targets:
-                    self.table[arch][optimization][target] = fnames[0]
+            sys.stdout.write("              " + arch)
+        sys.stdout.write("\n")
+
+        for optimization in self.optimizations:
+            sys.stdout.write("              " + optimization)
+        sys.stdout.write("\n")
+
+        for target in self.targets:
+            sys.stdout.write("              " + target)
+        sys.stdout.write("\n")
 
 
 class ExecutionStatGatherer:
     def __init__(self):
         self.optimizations = ['O0', 'O2']
         self.architectures = ['x86', 'x86-64']
-        self.all_est_targets  = ["sse2-i32x4", "sse2-i32x8", "sse4-i32x4", "sse4-i32x8", "sse4-i16x8",
-                                 "sse4-i8x16", "avx1-i32x4" "avx1-i32x8", "avx1-i32x16", "avx1-i64x4", 
-                                 "avx1.1-i32x8", "avx1.1-i32x16", "avx1.1-i64x4", "avx2-i32x8", "avx2-i32x16", 
-                                 "avx2-i64x4", "generic-1", "generic-4", "generic-8", "generic-16", 
-                                 "generic-32", "generic-64", "knc"]
+        self.all_test_targets  = ["sse2-i32x4", "sse2-i32x8", "sse4-i32x4", "sse4-i32x8", "sse4-i16x8",
+                                  "sse4-i8x16", "avx1-i32x4" "avx1-i32x8", "avx1-i32x16", "avx1-i64x4", 
+                                  "avx1.1-i32x8", "avx1.1-i32x16", "avx1.1-i64x4", "avx2-i32x8", "avx2-i32x16", 
+                                  "avx2-i64x4", "generic-1", "generic-4", "generic-8", "generic-16", 
+                                  "generic-32", "generic-64", "knc"]
         self.tests_total     = 0
         self.tests_completed = 0
         self.tests_skipped   = 0
@@ -101,8 +105,8 @@ class ExecutionStatGatherer:
         self.tests_failed    = 0
         self.tests_succeed   = 0
 
-
-                
+        self.test_table = TestTable(self.optimizations, self.architectures, self.all_test_targets)
+       
         
     def printout(self):
         print("ESG: Done %d / %d" % (self.tests_completed, self.tests_total))

@@ -38,32 +38,50 @@ import errno
 import shutil
 
 
+class Test:
+    def __init__(self, name_, runfailed_, compfailed_, skipped_):
+        self.name = name_
+        self.runfailed = runfailed_
+        self.compfailed = compfailed_
+        self.skipped = skipped_
+
 class TestTable:
-    def __init__(self, optimizations_, archs_, targets_, fnames_):
-        self.table = {}
+    def __init__(self, optimizations_, archs_, targets_):
+        self.table = self.arch_struct()
         self.optimizations = optimizations_
         self.archs = archs_
         self.targets = targets_
-        self.fnames = fnames_
         
-        for arch in archs:
+        for arch in self.archs:
             for optimization in optimizations:
                 for target in targets:
-                    self.table[arch][optimization][target] = fnames[0]
+                    self.table[arch][optimization][target] = []
 
-    def arch_struct(self): 
-        return defaultdict(optimization_struct)
+    def arch_struct(self):
+        a = {}
+        for arch in  self.archs:
+            a[arch] = self.optimization_struct()
+        return a
 
     def optimization_struct(self):
-        return defaultdict(target_struct)
+        a = {}
+        for optimization in self.optimizations:
+            a[optimization] = self.target_struct()
+        return a
     
     def target_struct(self):
-        return dict(testname='', failed=0)
+        a = {}
+        for target in self.targets:
+            a[target] = []
+        return a
+    
+    def add(self, test, arch, opt, target):
+        self.table[arch][optimization][target] = []
 
     def printout(self):
-        for arch in archs:
-            for optimization in optimizations:
-                for target in targets:
+        for arch in self.archs:
+            for optimization in self.optimizations:
+                for target in self.targets:
                     self.table[arch][optimization][target] = fnames[0]
 
 

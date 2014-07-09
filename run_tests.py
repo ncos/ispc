@@ -732,16 +732,8 @@ def run_tests(options1, args, print_version):
     else:
         opt = "O2"
 
-    #non_succeed_files = skip_files + compile_error_files + run_error_files
-    #run_succeed_files = [item for item in files if item not in non_succeed_files]
 
-    common.ex_state.tests_total     = common.ex_state.tests_total + total_tests
-    #common.ex_state.tests_completed = common.ex_state.tests_completed + finished_tests_counter.value
-    #common.ex_state.tests_skipped   = common.ex_state.tests_skipped + len(skip_files)
-    #common.ex_state.tests_comperr   = common.ex_state.tests_comperr + len(compile_error_files)
-    #common.ex_state.tests_failed    = common.ex_state.tests_failed  + len(run_error_files)
-    #common.ex_state.tests_succeed   = common.ex_state.tests_succeed + len(run_succeed_files)
-
+    common.ex_state.tests_total     = common.ex_state.tests_total + total_tests)
     for fname in skip_files:
         test_ = common.Test(fname, 0, 0, 1)
         common.ex_state.add_test_result(test_, options.arch, opt, options.target)
@@ -758,7 +750,6 @@ def run_tests(options1, args, print_version):
         test_ = common.Test(fname, 0, 0, 0)
         common.ex_state.add_test_result(test_, options.arch, opt, options.target)
 
-    #print common.ex_state
 
     for jb in task_threads:
         if not jb.exitcode == 0:

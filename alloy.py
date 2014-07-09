@@ -598,6 +598,7 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
             attach_mail_file(msg, "." + os.sep + "logs" + os.sep + "perf_build.log", "perf_build.log")
 
 # sending e-mail with results
+    print common.ex_state
     if options.notify != "":
         fp = open(os.environ["ISPC_HOME"] + os.sep + "notify_log.log", 'rb')
         f_lines = fp.readlines()

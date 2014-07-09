@@ -737,23 +737,21 @@ def run_tests(options1, args, print_version):
     common.ex_state.tests_failed    = common.ex_state.tests_failed  + len(run_error_files)
     common.ex_state.tests_succeed   = common.ex_state.tests_succeed + len(run_succeed_files)
 
-
-    common.ex_state.printout()
     for fname in skip_files:
         test_ = common.Test(fname, 0, 0, 1)
-        common.ex_state.test_table.add(test_, options.arch, opt, options.target)
+        common.ex_state.add_test_result(test_, options.arch, opt, options.target)
 
     for fname in compile_error_files:
         test_ = common.Test(fname, 0, 1, 0)
-        common.ex_state.test_table.add(test_, options.arch, opt, options.target)
+        common.ex_state.add_test_result(test_, options.arch, opt, options.target)
 
     for fname in run_error_files:
         test_ = common.Test(fname, 1, 0, 0)
-        common.ex_state.test_table.add(test_, options.arch, opt, options.target)
+        common.ex_state.add_test_result(test_, options.arch, opt, options.target)
 
     for fname in run_succeed_files:
         test_ = common.Test(fname, 0, 0, 0)
-        common.ex_state.test_table.add(test_, options.arch, opt, options.target)
+        common.ex_state.add_test_result(test_, options.arch, opt, options.target)
 
 
     for jb in task_threads:

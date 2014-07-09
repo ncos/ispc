@@ -322,12 +322,13 @@ def run_tasks_from_queue(queue, queue_ret, queue_skip, total_tests_arg, max_test
         olddir = ""
     
     compile_error_files = [ ]
+    run_succeed_files = [ ]
     run_error_files = [ ]
     skip_files = [ ]
     while True:
         filename = queue.get()
         if (filename == 'STOP'):
-            queue_ret.put((compile_error_files, run_error_files, skip_files))
+            queue_ret.put((compile_error_files, run_error_files, skip_files, run_succeed_files))
             if is_windows:
                 try:
                     os.remove("test_static.obj")
@@ -350,6 +351,8 @@ def run_tasks_from_queue(queue, queue_ret, queue_skip, total_tests_arg, max_test
                 print_debug("ERROR: run_test function raised an exception: %s\n" % (sys.exc_info()[1]), s, run_tests_log)
                 sys.exit(-1) # This is in case the child has unexpectedly died or some other exception happened
             
+            if compile_error == 0 and run_error == 0:
+                run_succeed_files += [ filename ]
             if compile_error != 0:
                 compile_error_files += [ filename ]
             if run_error != 0:
@@ -669,6 +672,7 @@ def run_tests(options1, args, print_version):
     total_tests = len(files)
 
     compile_error_files = [ ]
+    run_succeed_files = [ ]
     run_error_files = [ ]
     skip_files = [ ]
 
@@ -716,10 +720,11 @@ def run_tests(options1, args, print_version):
     elapsed_time = time.strftime('%Hh%Mm%Ssec.', time.gmtime(temp_time))
 
     while not qret.empty():
-        (c, r, skip) = qret.get()
+        (c, r, skip, ss) = qret.get()
         compile_error_files += c
         run_error_files += r
         skip_files += skip
+        run_succeed_files += ss
 
     # Detect opt_set
     if options.no_opt == True:
@@ -727,15 +732,15 @@ def run_tests(options1, args, print_version):
     else:
         opt = "O2"
 
-    non_succeed_files = skip_files + compile_error_files + run_error_files
-    run_succeed_files = [item for item in files if item not in non_succeed_files]
+    #non_succeed_files = skip_files + compile_error_files + run_error_files
+    #run_succeed_files = [item for item in files if item not in non_succeed_files]
 
     common.ex_state.tests_total     = common.ex_state.tests_total + total_tests
-    common.ex_state.tests_completed = common.ex_state.tests_completed + finished_tests_counter.value
-    common.ex_state.tests_skipped   = common.ex_state.tests_skipped + len(skip_files)
-    common.ex_state.tests_comperr   = common.ex_state.tests_comperr + len(compile_error_files)
-    common.ex_state.tests_failed    = common.ex_state.tests_failed  + len(run_error_files)
-    common.ex_state.tests_succeed   = common.ex_state.tests_succeed + len(run_succeed_files)
+    #common.ex_state.tests_completed = common.ex_state.tests_completed + finished_tests_counter.value
+    #common.ex_state.tests_skipped   = common.ex_state.tests_skipped + len(skip_files)
+    #common.ex_state.tests_comperr   = common.ex_state.tests_comperr + len(compile_error_files)
+    #common.ex_state.tests_failed    = common.ex_state.tests_failed  + len(run_error_files)
+    #common.ex_state.tests_succeed   = common.ex_state.tests_succeed + len(run_succeed_files)
 
     for fname in skip_files:
         test_ = common.Test(fname, 0, 0, 1)
@@ -753,6 +758,7 @@ def run_tests(options1, args, print_version):
         test_ = common.Test(fname, 0, 0, 0)
         common.ex_state.add_test_result(test_, options.arch, opt, options.target)
 
+    #print common.ex_state
 
     for jb in task_threads:
         if not jb.exitcode == 0:

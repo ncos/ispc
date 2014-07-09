@@ -104,6 +104,12 @@ class ExecutionStatGatherer:
        
     def add_test_result(self, test, arch, optimization, target):
         self.test_table.add(test, arch, optimization, target)
+        self.tests_completed += 1
+        self.tests_skipped += test.skipped
+        self.tests_comperr += test.compfailed
+        self.tests_failed += test.runfailed
+        if (test.skipped + test.compfailed + test.runfailed == 0):
+            self.tests_succeed += 1
 
     def __repr__(self):
         str = ""

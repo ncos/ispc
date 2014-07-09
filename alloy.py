@@ -429,6 +429,9 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
         for i in ["3.1", "3.2", "3.3", "3.4", "trunk"]:
             if i in only:
                 LLVM.append(i)
+        if "R" in only:
+            for i in range (0, only.count("R")):
+                print only[only.find("R"):only.find(" ")]
         if "current" in only:
             LLVM = [" "]
             rebuild = False
@@ -660,10 +663,18 @@ def Main():
         if os.environ.get("SMTP_ISPC") == None:
             error("you have no SMTP_ISPC in your environment for option notify", 1)
     if options.only != "":
-        test_only_r = " 3.1 3.2 3.3 3.4 trunk current build stability performance x86 x86-64 -O0 -O2 native "
+        test_only_r = " 3.1 3.2 3.3 3.4 trunk current build stability performance x86 x86-64 -O0 -O2 native R "
         test_only = options.only.split(" ")
         for iterator in test_only:
-            if not (" " + iterator + " " in test_only_r):
+            only_list = re.split('R | ', options.only)
+            for i in only_list:
+                try: 
+                    if i[0] == "R":
+                        int(i[1:])
+                except ValueError:
+                    error("unknow option for only: " + i, 1)            
+    
+            if iterator != "R" and not (" " + iterator + " " in test_only_r):
                 error("unknow option for only: " + iterator, 1)
     if current_OS == "Windows":
         if options.debug == True or options.selfbuild == True or options.tarball != "":
@@ -803,6 +814,9 @@ if __name__ == '__main__':
             default="")
     run_group.add_option('--perf_LLVM', dest='perf_llvm',
         help='compare LLVM 3.3 with "--compare-with", default trunk', default=False, action='store_true')
+    run_group.add_option('--find_regression', dest='find_regr',
+        help='use binary search to find trunk of LLVM, which caused the regression', default=False, action='store_true')
+    
     parser.add_option_group(run_group)
     # options for activity "setup PATHS"
     setup_group = OptionGroup(parser, "Options for setup",

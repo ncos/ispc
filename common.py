@@ -171,7 +171,24 @@ class ExecutionStatGatherer:
         ret.tests_succeed = self.tests_succeed - esg_b.tests_succeed        
         return ret
 
-
+    def find_worst_test(self):
+        run_fail = 0
+        comp_fail = 0
+        archs = self.test_table.table.keys()
+        for arch in archs:
+            optimizations = self.test_table.table[arch].keys()
+            for optimization in optimizations:
+                targets = self.test_table.table[arch][optimization].keys()
+                for target in targets:
+                    for test_ in self.test_table.table[arch][optimization][target]:
+                        if test_.runfailed > run_fail:
+                            run_fail = test_.runfailed
+                            str_run_fail = arch + " " + optimization + " " + target + " " + test_.name
+                        if test_.compfailed > comp_fail:
+                            comp_fail = test_.compfailed
+                            str_comp_fail = arch + " " + optimization + " " + target + " " + test_.name
+        return [str_run_fail, str_comp_fail] 
+        
 ex_state = ExecutionStatGatherer() 
 
 def write_to_file(filename, line):

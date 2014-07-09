@@ -45,6 +45,10 @@ class Test:
         self.compfailed = compfailed_
         self.skipped = skipped_
 
+    def __repr__(self):
+        # Default printout function
+        return "%s(%d %d %d)" % (self.name, self.runfailed, self.compfailed, self.skipped)
+
 
 class TestTable:
     def __init__(self):
@@ -68,32 +72,27 @@ class TestTable:
         self.add_target(arch, optimization, target)
         if not test in self.table[arch][optimization][target]:
             self.table[arch][optimization][target].append(test)
-        else:
-            print "WARNING! YOU TRY TO ADD A TEST THAT IS ALREADY IN THE TABLE!!!"
+            return True
+        return False
 
-    def printout(self):
-        for arch in self.archs:
-            sys.stdout.write("              " + arch)
-        sys.stdout.write("\n")
-
-        for optimization in self.optimizations:
-            sys.stdout.write("              " + optimization)
-        sys.stdout.write("\n")
-
-        for target in self.targets:
-            sys.stdout.write("              " + target)
-        sys.stdout.write("\n")
+    def __repr__(self):
+        str = ""
+        archs = self.table.keys()
+        for arch in archs:
+            optimizations = self.table[arch].keys()
+            for optimization in optimizations:
+                targets = self.table[arch][optimization].keys()
+                for target in targets:
+                    str = str + arch + "|" + optimization + "|" + target + "|  \n"
+                    for test_ in self.table[arch][optimization][target]:
+                        if test_.runfailed + test_.compfailed + test_.skipped != 0:
+                            str = str + repr(test_).rjust(70) + "\n"
+        return str
 
 
 class ExecutionStatGatherer:
     def __init__(self):
-        #self.optimizations = ['O0', 'O2']
-        #self.architectures = ['x86', 'x86-64']
-        #self.all_test_targets  = ["sse2-i32x4", "sse2-i32x8", "sse4-i32x4", "sse4-i32x8", "sse4-i16x8",
-        #                          "sse4-i8x16", "avx1-i32x4" "avx1-i32x8", "avx1-i32x16", "avx1-i64x4", 
-        #                          "avx1.1-i32x8", "avx1.1-i32x16", "avx1.1-i64x4", "avx2-i32x8", "avx2-i32x16", 
-        #                          "avx2-i64x4", "generic-1", "generic-4", "generic-8", "generic-16", 
-        #                          "generic-32", "generic-64", "knc"]
+
         self.tests_total     = 0
         self.tests_completed = 0
         self.tests_skipped   = 0
@@ -103,14 +102,19 @@ class ExecutionStatGatherer:
 
         self.test_table = TestTable()
        
-        
-    def printout(self):
-        print("ESG: Done %d / %d" % (self.tests_completed, self.tests_total))
-        print("ESG: %d / %d tests SKIPPED:" % (self.tests_skipped, self.tests_total))
-        print("ESG: %d / %d tests FAILED compilation:" % (self.tests_comperr, self.tests_total))
-        print("ESG: %d / %d tests FAILED execution:" % (self.tests_failed, self.tests_total))
-        print("ESG: Passed %d / %d" % (self.tests_succeed, self.tests_total))
+    def add_test_result(self, test, arch, optimization, target):
+        self.test_table.add(test, arch, optimization, target)
 
+    def __repr__(self):
+        str = ""
+        str = str + ("ESG: Done %d / %d\n" % (self.tests_completed, self.tests_total))
+        str = str + ("ESG: %d / %d tests SKIPPED\n" % (self.tests_skipped, self.tests_total))
+        str = str + ("ESG: %d / %d tests FAILED compilation\n" % (self.tests_comperr, self.tests_total))
+        str = str + ("ESG: %d / %d tests FAILED execution\n" % (self.tests_failed, self.tests_total))
+        str = str + ("ESG: Passed %d / %d\n" % (self.tests_succeed, self.tests_total))
+        str = str + "\n"
+        str = str + repr(self.test_table)
+        return str
 
 ex_state = ExecutionStatGatherer() 
 

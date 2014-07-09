@@ -503,7 +503,7 @@ def run_tests(options1, args, print_version):
     global s
     s = options.silent
     
-    # prepare run_tests_log and fail_db files
+    # prepare run_tests_log and fail_db file
     global run_tests_log
     if options.in_file:
         run_tests_log = os.getcwd() + os.sep + options.in_file
@@ -721,6 +721,12 @@ def run_tests(options1, args, print_version):
         run_error_files += r
         skip_files += skip
 
+    # Detect opt_set
+    if options.no_opt == True:
+        opt = "O0"
+    else:
+        opt = "O2"
+
     non_succeed_files = skip_files + compile_error_files + run_error_files
     run_succeed_files = [item for item in files if item not in non_succeed_files]
 
@@ -728,17 +734,27 @@ def run_tests(options1, args, print_version):
     common.ex_state.tests_completed = common.ex_state.tests_completed + finished_tests_counter.value
     common.ex_state.tests_skipped   = common.ex_state.tests_skipped + len(skip_files)
     common.ex_state.tests_comperr   = common.ex_state.tests_comperr + len(compile_error_files)
-    common.ex_state.tests_failed    = common.ex_state.tests_failed + len(run_error_files)
+    common.ex_state.tests_failed    = common.ex_state.tests_failed  + len(run_error_files)
     common.ex_state.tests_succeed   = common.ex_state.tests_succeed + len(run_succeed_files)
 
 
     common.ex_state.printout()
+    for fname in skip_files:
+        test_ = common.Test(fname, 0, 0, 1)
+        common.ex_state.test_table.add(test_, options.arch, opt, options.target)
+
     for fname in compile_error_files:
-        test_ = Test(fname, 0, 1, 0)
-        common.ex_state.test_table.add(test_, 
+        test_ = common.Test(fname, 0, 1, 0)
+        common.ex_state.test_table.add(test_, options.arch, opt, options.target)
 
+    for fname in run_error_files:
+        test_ = common.Test(fname, 1, 0, 0)
+        common.ex_state.test_table.add(test_, options.arch, opt, options.target)
 
-    #common.ex_state.test_table.add()
+    for fname in run_succeed_files:
+        test_ = common.Test(fname, 0, 0, 0)
+        common.ex_state.test_table.add(test_, options.arch, opt, options.target)
+
 
     for jb in task_threads:
         if not jb.exitcode == 0:

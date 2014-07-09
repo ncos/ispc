@@ -47,33 +47,29 @@ class Test:
 
 
 class TestTable:
-    def __init__(self, optimizations_, archs_, targets_):
-        self.optimizations = optimizations_
-        self.archs = archs_
-        self.targets = targets_
-        self.table = self.arch_struct()
+    def __init__(self):
+        self.table = {}
 
-    def arch_struct(self):
-        a = {}
-        for arch in self.archs:
-            a[arch] = self.optimization_struct()
-        return a
+    def add_arch(self, arch):
+        if arch not in self.table:
+            self.table[arch] = {}
 
-    def optimization_struct(self):
-        a = {}
-        for optimization in self.optimizations:
-            a[optimization] = self.target_struct()
-        return a
+    def add_optimization(self, arch, optimization):
+        self.add_arch(arch)
+        if optimization not in self.table[arch]:
+            self.table[arch][optimization] = {}
     
-    def target_struct(self):
-        a = {}
-        for target in self.targets:
-            a[target] = []
-        return a
+    def add_target(self, arch, optimization, target):
+        self.add_optimization(arch, optimization)
+        if target not in self.table[arch][optimization]:
+            self.table[arch][optimization][target] = []
     
-    def add(self, test, arch, opt, target):
+    def add(self, test, arch, optimization, target):
+        self.add_target(arch, optimization, target)
         if not test in self.table[arch][optimization][target]:
             self.table[arch][optimization][target].append(test)
+        else:
+            print "WARNING! YOU TRY TO ADD A TEST THAT IS ALREADY IN THE TABLE!!!"
 
     def printout(self):
         for arch in self.archs:
@@ -91,13 +87,13 @@ class TestTable:
 
 class ExecutionStatGatherer:
     def __init__(self):
-        self.optimizations = ['O0', 'O2']
-        self.architectures = ['x86', 'x86-64']
-        self.all_test_targets  = ["sse2-i32x4", "sse2-i32x8", "sse4-i32x4", "sse4-i32x8", "sse4-i16x8",
-                                  "sse4-i8x16", "avx1-i32x4" "avx1-i32x8", "avx1-i32x16", "avx1-i64x4", 
-                                  "avx1.1-i32x8", "avx1.1-i32x16", "avx1.1-i64x4", "avx2-i32x8", "avx2-i32x16", 
-                                  "avx2-i64x4", "generic-1", "generic-4", "generic-8", "generic-16", 
-                                  "generic-32", "generic-64", "knc"]
+        #self.optimizations = ['O0', 'O2']
+        #self.architectures = ['x86', 'x86-64']
+        #self.all_test_targets  = ["sse2-i32x4", "sse2-i32x8", "sse4-i32x4", "sse4-i32x8", "sse4-i16x8",
+        #                          "sse4-i8x16", "avx1-i32x4" "avx1-i32x8", "avx1-i32x16", "avx1-i64x4", 
+        #                          "avx1.1-i32x8", "avx1.1-i32x16", "avx1.1-i64x4", "avx2-i32x8", "avx2-i32x16", 
+        #                          "avx2-i64x4", "generic-1", "generic-4", "generic-8", "generic-16", 
+        #                          "generic-32", "generic-64", "knc"]
         self.tests_total     = 0
         self.tests_completed = 0
         self.tests_skipped   = 0
@@ -105,7 +101,7 @@ class ExecutionStatGatherer:
         self.tests_failed    = 0
         self.tests_succeed   = 0
 
-        self.test_table = TestTable(self.optimizations, self.architectures, self.all_test_targets)
+        self.test_table = TestTable()
        
         
     def printout(self):

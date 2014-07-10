@@ -53,7 +53,7 @@ def setting_paths(llvm, ispc, sde):
 
 def check_LLVM(which_LLVM):
     answer = []
-    if which_LLVM[0] == " ":
+    if len(which_LLVM) > 0 and which_LLVM[0] == " ":
         return answer
     p = os.environ["LLVM_HOME"]
     for i in range(0,len(which_LLVM)):
@@ -432,7 +432,7 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
                 LLVM.append(i)
         only_param = re.split('R | ', only)
         for i in only_param:
-            if i[0] == "R":
+            if len(i) > 0 and i[0] == "R":
                 rev_pattern = re.compile("^[R]([0-9]+)$")
                 if rev_pattern.match(i) != None:
                     LLVM_revisions.append("trunk_r" + i[1:])
@@ -713,6 +713,17 @@ def Main():
             validation_run(options.only, options.only_targets, options.branch,
                     options.number_for_performance, options.notify, options.update, int(options.speed),
                     make, options.perf_llvm, options.time)
+            if options.find_regr:
+                print "Hello, bin_search!"
+                flag = False
+                start_ex_state = ExecutionStatGatherer()
+                start_ex_state = common.ex_state
+                start_ex_state.revision = options.start_rev
+                end_ex_state = ExecutionStatGatherer()
+                end_ex_state.revision = options.end_rev
+                print start_ex_state
+                #while not flag:
+                #    start_ex_state = common.ex_state
         elapsed_time = time.time() - start_time
         if options.time:
             print_debug("Elapsed time: " + time.strftime('%Hh%Mm%Ssec.', time.gmtime(elapsed_time)) + "\n", False, "")
@@ -780,6 +791,8 @@ if __name__ == '__main__':
         help='ask for validation run', default=False, action="store_true")
     parser.add_option('-j', dest='speed',
         help='set -j for make', default=num_threads)
+    parser.add_option( '--find-regr', dest='find_regr',
+        help='ask for regression search', default=False, action="store_true")
     # options for activity "build LLVM"
     llvm_group = OptionGroup(parser, "Options for building LLVM",
                     "These options must be used with -b option.")
@@ -823,9 +836,13 @@ if __name__ == '__main__':
             default="")
     run_group.add_option('--perf_LLVM', dest='perf_llvm',
         help='compare LLVM 3.3 with "--compare-with", default trunk', default=False, action='store_true')
-    run_group.add_option('--find_regression', dest='find_regr',
-        help='use binary search to find trunk of LLVM, which caused the regression', default=False, action='store_true')
-    
+    # options for activity "regression search"
+    regr_group = OptionGroup(parser, "Options for regression search",
+                        "These options must be used with -r and --find-regr options.")
+    regr_group.add_option('--start-rev', dest='start_rev',
+        help='start revision for search', default="")
+    regr_group.add_option('--end-rev', dest='end_rev',
+        help='end revision for search', default="")
     parser.add_option_group(run_group)
     # options for activity "setup PATHS"
     setup_group = OptionGroup(parser, "Options for setup",

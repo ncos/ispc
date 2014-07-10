@@ -119,7 +119,7 @@ class ExecutionStatGatherer:
         self.tests_comperr   = 0
         self.tests_failed    = 0
         self.tests_succeed   = 0
-
+        self.revision        = "" 
         self.test_table = TestTable()
        
     def add_test_result(self, test, arch, optimization, target):
@@ -133,6 +133,7 @@ class ExecutionStatGatherer:
 
     def __repr__(self):
         str = ""
+        str = str + ("ESG: Revision of LLVM %s\n" % (self.revision))
         str = str + ("ESG: Done %d / %d\n" % (self.tests_completed, self.tests_total))
         str = str + ("ESG: %d / %d tests SKIPPED\n" % (self.tests_skipped, self.tests_total))
         str = str + ("ESG: %d / %d tests FAILED compilation\n" % (self.tests_comperr, self.tests_total))

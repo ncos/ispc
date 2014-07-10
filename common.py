@@ -38,6 +38,28 @@ import errno
 import shutil
 
 
+class DictDiffer(object):
+    """
+    Calculate the difference between two dictionaries as:
+    (1) items added
+    (2) items removed
+    (3) keys same in both but changed values
+    (4) keys same in both and unchanged values
+    """
+    def __init__(self, current_dict, past_dict):
+        self.current_dict, self.past_dict = current_dict, past_dict
+        self.set_current, self.set_past = set(current_dict.keys()), set(past_dict.keys())
+        self.intersect = self.set_current.intersection(self.set_past)
+    def added(self):
+        return self.set_current - self.intersect 
+    def removed(self):
+        return self.set_past - self.intersect 
+    def changed(self):
+        return set(o for o in self.intersect if self.past_dict[o] != self.current_dict[o])
+    def unchanged(self):
+        return set(o for o in self.intersect if self.past_dict[o] == self.current_dict[o])
+
+
 class Test:
     def __init__(self, name_, runfailed_, compfailed_, skipped_):
         self.name = name_
@@ -100,6 +122,7 @@ class ExecutionStatGatherer:
         self.tests_failed    = 0
         self.tests_succeed   = 0
 
+        self.revision        = "" 
         self.test_table = TestTable()
        
     def add_test_result(self, test, arch, optimization, target):
@@ -113,6 +136,7 @@ class ExecutionStatGatherer:
 
     def __repr__(self):
         str = ""
+        str = str + ("ESG: Revision of LLVM %s\n" % (self.revision))
         str = str + ("ESG: Done %d / %d\n" % (self.tests_completed, self.tests_total))
         str = str + ("ESG: %d / %d tests SKIPPED\n" % (self.tests_skipped, self.tests_total))
         str = str + ("ESG: %d / %d tests FAILED compilation\n" % (self.tests_comperr, self.tests_total))
@@ -121,6 +145,54 @@ class ExecutionStatGatherer:
         str = str + "\n"
         str = str + repr(self.test_table)
         return str
+
+    def diff (self, esg_b):
+        ret = ExecutionStatGatherer()
+        arch_diff =  DictDiffer(self.test_table.table, esg_b.test_table.table)
+        for i in arch_diff.added():
+            ret.test_table.add_arch(i)
+            ret.test_table.table[i] = self.test_table.table[i]
+        for arch in arch_diff.changed():
+            ret.test_table.add_arch(arch)
+            opt_diff =  DictDiffer(self.test_table.table[arch], esg_b.test_table.table[arch])
+            for i in opt_diff.added():
+                ret.test_table.add_optimization(arch, i)
+                ret.test_table.table[arch][i] = self.test_table.table[arch][i]
+            for opt in opt_diff.changed():
+                ret.test_table.add_optimization(arch, opt)
+                target_diff =  DictDiffer(self.test_table.table[arch][opt], esg_b.test_table.table[arch][opt])
+                for i in target_diff.added():
+                    ret.test_table.add_target(arch,opt, i)
+                    ret.test_table.table[arch][opt][i] = self.test_table.table[arch][opt][i]
+                for target in target_diff.changed():
+                    ret.test_table.add_target(arch,opt, target)
+                    ret.test_table.table[arch][opt][target] = list(set(self.test_table.table[arch][opt][target]).difference( (esg_b.test_table.table[arch][opt][target])))
+        ret.tests_total = max (self.tests_total, esg_b.tests_total)
+        ret.tests_completed = self.tests_completed - esg_b.tests_completed
+        ret.tests_skipped = self.tests_skipped - esg_b.tests_skipped
+        ret.tests_comperr = self.tests_comperr - esg_b.tests_comperr
+        ret.tests_failed = self.tests_failed - esg_b.tests_failed
+        ret.tests_succeed = self.tests_succeed - esg_b.tests_succeed        
+        return ret
+
+    def find_worst_test(self):
+        run_fail = 0
+        comp_fail = 0
+        archs = self.test_table.table.keys()
+        for arch in archs:
+            optimizations = self.test_table.table[arch].keys()
+            for optimization in optimizations:
+                targets = self.test_table.table[arch][optimization].keys()
+                for target in targets:
+                    for test_ in self.test_table.table[arch][optimization][target]:
+                        if test_.runfailed > run_fail:
+                            run_fail = test_.runfailed
+                            str_run_fail = arch + " " + optimization + " " + target + " " + test_.name
+                        if test_.compfailed > comp_fail:
+                            comp_fail = test_.compfailed
+                            str_comp_fail = arch + " " + optimization + " " + target + " " + test_.name
+        return [str_run_fail, str_comp_fail] 
+        
 
 ex_state = ExecutionStatGatherer() 
 

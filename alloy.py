@@ -53,7 +53,7 @@ def setting_paths(llvm, ispc, sde):
 
 def check_LLVM(which_LLVM):
     answer = []
-    if which_LLVM[0] == " ":
+    if len(which_LLVM) > 0 and which_LLVM[0] == " ":
         return answer
     p = os.environ["LLVM_HOME"]
     for i in range(0,len(which_LLVM)):
@@ -413,6 +413,7 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
         opts = []
         archs = []
         LLVM = []
+        LLVM_revisions = []
         targets = []
         sde_targets = []
 # parsing option only, update parameters of run
@@ -429,8 +430,18 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
         for i in ["3.1", "3.2", "3.3", "3.4", "trunk"]:
             if i in only:
                 LLVM.append(i)
+        only_param = re.split('R | ', only)
+        for i in only_param:
+            if len(i) > 0 and i[0] == "R":
+                rev_pattern = re.compile("^[R]([0-9]+)$")
+                if rev_pattern.match(i) != None:
+                    LLVM_revisions.append("trunk_r" + i[1:])
+        if "R" in only:
+            for i in range (0, only.count("R")):
+                print only[only.find("R"):only.find(" ")]
         if "current" in only:
             LLVM = [" "]
+            LLVM_revisions = [" "]
             rebuild = False
         else:
             common.check_tools(1)
@@ -482,8 +493,12 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
         gen_archs = ["x86-64"]
         knc_archs = ["x86-64"]
         need_LLVM = check_LLVM(LLVM)
+        need_LLVM_rev = check_LLVM(LLVM_revisions)
+        need_LLVM_rev = ["r" + i[len("trunk_r"):] for i in need_LLVM_rev]
         for i in range(0,len(need_LLVM)):
             build_LLVM(need_LLVM[i], "", "", "", False, False, False, True, False, make)
+        for i in range(0,len(need_LLVM_rev)):
+            build_LLVM("trunk", need_LLVM_rev[i], "", "", False, False, False, True, False, make)
 # begin validation run for stabitily
         common.remove_if_exists(stability.in_file)
         R = [[[],[]],[[],[]],[[],[]],[[],[]]]
@@ -660,11 +675,16 @@ def Main():
         if os.environ.get("SMTP_ISPC") == None:
             error("you have no SMTP_ISPC in your environment for option notify", 1)
     if options.only != "":
-        test_only_r = " 3.1 3.2 3.3 3.4 trunk current build stability performance x86 x86-64 -O0 -O2 native "
-        test_only = options.only.split(" ")
+        test_only_r = " 3.1 3.2 3.3 3.4 trunk current build stability performance x86 x86-64 -O0 -O2 native R "
+        test_only = re.split('R | ', options.only)
         for iterator in test_only:
-            if not (" " + iterator + " " in test_only_r):
-                error("unknow option for only: " + iterator, 1)
+            if iterator[0] != "R":
+                if not (" " + iterator + " " in test_only_r):
+                    error("unknow option for only: " + iterator, 1)
+            else:
+                rev_pattern = re.compile("^[R]([0-9]+)$")
+                if rev_pattern.match(iterator) == None:
+                    error("unknow option for only: " + iterator, 1)
     if current_OS == "Windows":
         if options.debug == True or options.selfbuild == True or options.tarball != "":
             error("Debug, selfbuild and tarball options are unsupported on windows", 1)
@@ -693,6 +713,17 @@ def Main():
             validation_run(options.only, options.only_targets, options.branch,
                     options.number_for_performance, options.notify, options.update, int(options.speed),
                     make, options.perf_llvm, options.time)
+            if options.find_regr:
+                print "Hello, bin_search!"
+                flag = False
+                start_ex_state = ExecutionStatGatherer()
+                start_ex_state = common.ex_state
+                start_ex_state.revision = options.start_rev
+                end_ex_state = ExecutionStatGatherer()
+                end_ex_state.revision = options.end_rev
+                print start_ex_state
+                #while not flag:
+                #    start_ex_state = common.ex_state
         elapsed_time = time.time() - start_time
         if options.time:
             print_debug("Elapsed time: " + time.strftime('%Hh%Mm%Ssec.', time.gmtime(elapsed_time)) + "\n", False, "")
@@ -760,6 +791,8 @@ if __name__ == '__main__':
         help='ask for validation run', default=False, action="store_true")
     parser.add_option('-j', dest='speed',
         help='set -j for make', default=num_threads)
+    parser.add_option( '--find-regr', dest='find_regr',
+        help='ask for regression search', default=False, action="store_true")
     # options for activity "build LLVM"
     llvm_group = OptionGroup(parser, "Options for building LLVM",
                     "These options must be used with -b option.")
@@ -803,6 +836,13 @@ if __name__ == '__main__':
             default="")
     run_group.add_option('--perf_LLVM', dest='perf_llvm',
         help='compare LLVM 3.3 with "--compare-with", default trunk', default=False, action='store_true')
+    # options for activity "regression search"
+    regr_group = OptionGroup(parser, "Options for regression search",
+                        "These options must be used with -r and --find-regr options.")
+    regr_group.add_option('--start-rev', dest='start_rev',
+        help='start revision for search', default="")
+    regr_group.add_option('--end-rev', dest='end_rev',
+        help='end revision for search', default="")
     parser.add_option_group(run_group)
     # options for activity "setup PATHS"
     setup_group = OptionGroup(parser, "Options for setup",

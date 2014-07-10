@@ -732,8 +732,8 @@ def run_tests(options1, args, print_version):
     else:
         opt = "O2"
 
+    common.ex_state.tests_total = common.ex_state.tests_total + total_tests
 
-    common.ex_state.tests_total     = common.ex_state.tests_total + total_tests)
     for fname in skip_files:
         test_ = common.Test(fname, 0, 0, 1)
         common.ex_state.add_test_result(test_, options.arch, opt, options.target)

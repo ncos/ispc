@@ -413,6 +413,7 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
         opts = []
         archs = []
         LLVM = []
+        LLVM_revisions = []
         targets = []
         sde_targets = []
 # parsing option only, update parameters of run
@@ -429,11 +430,18 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
         for i in ["3.1", "3.2", "3.3", "3.4", "trunk"]:
             if i in only:
                 LLVM.append(i)
+        only_param = re.split('R | ', only)
+        for i in only_param:
+            if i[0] == "R":
+                rev_pattern = re.compile("^[R]([0-9]+)$")
+                if rev_pattern.match(i) != None:
+                    LLVM_revisions.append("trunk_r" + i[1:])
         if "R" in only:
             for i in range (0, only.count("R")):
                 print only[only.find("R"):only.find(" ")]
         if "current" in only:
             LLVM = [" "]
+            LLVM_revisions = [" "]
             rebuild = False
         else:
             common.check_tools(1)
@@ -485,8 +493,12 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
         gen_archs = ["x86-64"]
         knc_archs = ["x86-64"]
         need_LLVM = check_LLVM(LLVM)
+        need_LLVM_rev = check_LLVM(LLVM_revisions)
+        need_LLVM_rev = ["r" + i[len("trunk_r"):] for i in need_LLVM_rev]
         for i in range(0,len(need_LLVM)):
             build_LLVM(need_LLVM[i], "", "", "", False, False, False, True, False, make)
+        for i in range(0,len(need_LLVM_rev)):
+            build_LLVM("trunk", need_LLVM_rev[i], "", "", False, False, False, True, False, make)
 # begin validation run for stabitily
         common.remove_if_exists(stability.in_file)
         R = [[[],[]],[[],[]],[[],[]],[[],[]]]
@@ -664,18 +676,15 @@ def Main():
             error("you have no SMTP_ISPC in your environment for option notify", 1)
     if options.only != "":
         test_only_r = " 3.1 3.2 3.3 3.4 trunk current build stability performance x86 x86-64 -O0 -O2 native R "
-        test_only = options.only.split(" ")
+        test_only = re.split('R | ', options.only)
         for iterator in test_only:
-            only_list = re.split('R | ', options.only)
-            for i in only_list:
-                try: 
-                    if i[0] == "R":
-                        int(i[1:])
-                except ValueError:
-                    error("unknow option for only: " + i, 1)            
-    
-            if iterator != "R" and not (" " + iterator + " " in test_only_r):
-                error("unknow option for only: " + iterator, 1)
+            if iterator[0] != "R":
+                if not (" " + iterator + " " in test_only_r):
+                    error("unknow option for only: " + iterator, 1)
+            else:
+                rev_pattern = re.compile("^[R]([0-9]+)$")
+                if rev_pattern.match(iterator) == None:
+                    error("unknow option for only: " + iterator, 1)
     if current_OS == "Windows":
         if options.debug == True or options.selfbuild == True or options.tarball != "":
             error("Debug, selfbuild and tarball options are unsupported on windows", 1)

@@ -307,9 +307,13 @@ def build_ispc(version_LLVM, make):
         if options.debug == True:
             folder +=  "dbg"
        
-        p = subprocess.Popen("svnversion " + folder, shell=True, \
+        p = subprocess.Popen("svn info " + folder, shell=True, \
                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (revision_llvm, err) = p.communicate()
+        (info_llvm, err) = p.communicate()
+        info_llvm = re.split('\n', info_llvm)
+        for i in info_llvm:
+            if len(i) > 0 and i.startswith("Last Changed Rev: "):
+                common.ex_state.revision = i[len("Last Changed Rev: "):]
         
         try_do_LLVM("recognize LLVM revision", "svn info " + folder, True)
         try_do_LLVM("build ISPC with LLVM version " + version_LLVM + " ", make, True)
@@ -431,14 +435,10 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
             if i in only:
                 LLVM.append(i)
         only_param = re.split('R | ', only)
+        rev_pattern = re.compile("^[R]([0-9]+)$")
         for i in only_param:
-            if len(i) > 0 and i[0] == "R":
-                rev_pattern = re.compile("^[R]([0-9]+)$")
-                if rev_pattern.match(i) != None:
-                    LLVM_revisions.append("trunk_r" + i[1:])
-        if "R" in only:
-            for i in range (0, only.count("R")):
-                print only[only.find("R"):only.find(" ")]
+            if len(i) > 0 and i[0] == "R" and rev_pattern.match(i) != None:
+                LLVM_revisions.append("trunk_r" + i[1:])
         if "current" in only:
             LLVM = [" "]
             LLVM_revisions = [" "]
@@ -488,7 +488,7 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
             opts = [False]
         if len(archs) == 0:
             archs = ["x86", "x86-64"]
-        if len(LLVM) == 0:
+        if len(LLVM) == 0 and len(LLVM_revisions) == 0:
             LLVM = [newest_LLVM, "trunk"]
         gen_archs = ["x86-64"]
         knc_archs = ["x86-64"]
@@ -499,6 +499,9 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
             build_LLVM(need_LLVM[i], "", "", "", False, False, False, True, False, make)
         for i in range(0,len(need_LLVM_rev)):
             build_LLVM("trunk", need_LLVM_rev[i], "", "", False, False, False, True, False, make)
+        LLVM += LLVM_revisions
+        print "DEBUG:"
+        print LLVM
 # begin validation run for stabitily
         common.remove_if_exists(stability.in_file)
         R = [[[],[]],[[],[]],[[],[]],[[],[]]]
@@ -507,6 +510,16 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
             print_version = 2
             if rebuild:
                 build_ispc(LLVM[i], make)
+            if LLVM[i].startswith("trunk_r"):
+                if current_OS != "Windows":
+                    p_temp = os.getenv("PATH")
+                    clang_rev_path = os.environ["LLVM_HOME"] + "/bin-" + LLVM[i] + "/bin"
+                    make_sure_dir_exists(clang_rev_path)
+                    os.environ["PATH"] = clang_rev_path + ":" +  os.environ["PATH"]
+                    print "Clang path: stability.compiler_exe" + clang_rev_path
+                else:
+                    #TODO: change for Windows
+                    error("Regression search available only on Linux and Mac", 1)
             for j in range(0,len(targets)):
                 stability.target = targets[j]
                 stability.wrapexe = ""
@@ -522,7 +535,19 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
                         stability.no_opt = opts[i2]
                         try:
                             execute_stability(stability, R, print_version)
+                            if LLVM[i].startswith("trunk_r"):
+                                if current_OS != "Windows":
+                                    os.environ["PATH"] = p_temp
+                                else:
+                                    #TODO: change for Windows
+                                    error("Regression search available only on Linux and Mac", 1)
                         except:
+                            if LLVM[i].startswith("trunk_r"):
+                                if current_OS != "Windows":
+                                    os.environ["PATH"] = p_temp
+                                else:
+                                    #TODO: change for Windows
+                                    error("Regression search available only on Linux and Mac", 1)
                             print_debug("Exception in execute_stability - maybe some test subprocess terminated before it should have\n", False, stability_log)
                         print_version = 0
             for j in range(0,len(sde_targets)):
@@ -625,7 +650,7 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
             attach_mail_file(msg, "." + os.sep + "logs" + os.sep + "perf_build.log", "perf_build.log")
 
 # sending e-mail with results
-    print common.ex_state
+    #print common.ex_state
     if options.notify != "":
         fp = open(os.environ["ISPC_HOME"] + os.sep + "notify_log.log", 'rb')
         f_lines = fp.readlines()
@@ -662,7 +687,7 @@ def Main():
         else:
             current_OS = "Linux" 
 
-    if (options.build_llvm == False and options.validation_run == False):
+    if (options.build_llvm == False and options.validation_run == False and options.find_regr == False):
         parser.print_help()
         exit(0)
 
@@ -713,17 +738,84 @@ def Main():
             validation_run(options.only, options.only_targets, options.branch,
                     options.number_for_performance, options.notify, options.update, int(options.speed),
                     make, options.perf_llvm, options.time)
-            if options.find_regr:
-                print "Hello, bin_search!"
-                flag = False
-                start_ex_state = ExecutionStatGatherer()
-                start_ex_state = common.ex_state
-                start_ex_state.revision = options.start_rev
-                end_ex_state = ExecutionStatGatherer()
-                end_ex_state.revision = options.end_rev
-                print start_ex_state
-                #while not flag:
-                #    start_ex_state = common.ex_state
+        if options.find_regr:
+            regr_found = False
+            init_flag = False
+            end_ex_state = common.ExecutionStatGatherer()
+            start_ex_state = common.ExecutionStatGatherer()
+            prev_ex_state = common.ExecutionStatGatherer()
+            
+            print "DEBUG: start options"
+            print "R" + options.end_rev  + " " + options.only
+            validation_run("R" + options.end_rev + " " + options.only, options.only_targets, options.branch,
+                    options.number_for_performance, options.notify, options.update, int(options.speed),
+                    make, options.perf_llvm, options.time)
+            end_ex_state = copy.deepcopy(common.ex_state)
+            end_test_set = end_ex_state.find_worst_test()
+            common.ex_state = common.ExecutionStatGatherer()
+            end_test_set[0] = (end_test_set[0]).split()
+            end_test_set[1] = (end_test_set[1]).split()
+            print "DEBUG: test set"
+            print end_test_set[0]
+            print end_test_set[1]
+            print " ".join(end_test_set[0][:-1])
+            print " ".join(end_test_set[1][:-1])
+
+            if end_test_set == ["",""]:
+                print "Everything is OK. No fails."
+            else:
+                while not regr_found:
+                    print "DEBUG: cycle options"
+                    print "stability " + "R" + options.start_rev + " " + " ".join(end_test_set[0][:-1]) + " " + " ".join(end_test_set[1][:-1])
+                    print " ".join(end_test_set[0][-1:]) + " " + " ".join(end_test_set[1][-1:])
+                    validation_run("stability " + "R" + options.start_rev + " " + 
+                        " ".join(end_test_set[0][:-1]) + " " + " ".join(end_test_set[1][:-1]),
+                        " ".join(end_test_set[0][-1:]) + " " + " ".join(end_test_set[1][-1:]),
+                         options.branch, options.number_for_performance,
+                        options.notify, options.update, int(options.speed),
+                        make, options.perf_llvm, options.time)
+                    start_ex_state = copy.deepcopy(common.ex_state)
+                    common.ex_state = common.ExecutionStatGatherer()
+                    # TODO: fix comparison
+                    diff_end_start = common.ExecutionStatGatherer()
+                    diff_end_start = end_ex_state.diff(start_ex_state)
+                    if (diff_end_start.tests_failed == 0 and diff_end_start.tests_comperr == 0):
+                        print "No regression found"
+                        regr_found = True
+                        break
+                    if abs(int(end_ex_state.revision) - int(start_ex_state.revision)) <= 1:
+                        print "regression in" + start_ex_state.revision
+                        regr_found = True
+                        break
+                    print "\n" + "DEBUG !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" + "\n"
+                    print prev_ex_state
+                    print start_ex_state
+                    print end_ex_state
+                    if not init_flag:
+                        prev_ex_state = copy.deepcopy(start_ex_state)
+                        options.start_rev = str((int(start_ex_state.revision) + int(end_ex_state.revision)) / 2)
+                    else:
+                        diff_start_prev = common.ExecutionStatGatherer()
+                        diff_start_prev = start_ex_state.diff(prev_ex_state)
+                        #if (diff_end_start.tests_failed + diff_end_start.tests_comperr > \
+                        #    diff_start_prev.tests_failed + diff_start_prev.tests_comperr):
+                        # TODO: fix comparison and situation ['']
+                        rf = end_ex_state[0]
+                        cf = end_ex_state[1]
+                        if (len(end_ex_state.table_test.table[rf[0]][rf[1]][rf[2]])   + 
+                            len(end_ex_state.table_test.table[cf[0]][cf[1]][cf[2]])   -
+                            len(start_ex_state.table_test.table[rf[0]][rf[1]][rf[2]]) +
+                            len(start_ex_state.table_test.table[cf[0]][cf[1]][cf[2]]) >
+                            len(start_ex_state.table_test.table[rf[0]][rf[1]][rf[2]]) +
+                            len(start_ex_state.table_test.table[cf[0]][cf[1]][cf[2]]) -
+                            len(prev_ex_state.table_test.table[rf[0]][rf[1]][rf[2]])  +
+                            len(prev_ex_state.table_test.table[cf[0]][cf[1]][cf[2]])):
+                            prev_ex_state = copy.deepcopy(start_ex_state)
+                            options.start_rev = str((int(start_ex_state.revision) + int(end_ex_state.revision)) / 2)
+                        else:
+                            end_ex_state = copy.deepcopy(start_ex_state)
+                            options.start_rev = str((int(prev_ex_state.revision) + int(start_ex_state.revision)) / 2)
+                    
         elapsed_time = time.time() - start_time
         if options.time:
             print_debug("Elapsed time: " + time.strftime('%Hh%Mm%Ssec.', time.gmtime(elapsed_time)) + "\n", False, "")
@@ -751,6 +843,8 @@ import datetime
 import copy
 import multiprocessing
 import subprocess
+import re
+import collections
 from email.MIMEMultipart import MIMEMultipart
 from email.MIMEBase import MIMEBase
 from email.mime.text import MIMEText
@@ -791,7 +885,7 @@ if __name__ == '__main__':
         help='ask for validation run', default=False, action="store_true")
     parser.add_option('-j', dest='speed',
         help='set -j for make', default=num_threads)
-    parser.add_option( '--find-regr', dest='find_regr',
+    parser.add_option( '-f', '--find-regr', dest='find_regr',
         help='ask for regression search', default=False, action="store_true")
     # options for activity "build LLVM"
     llvm_group = OptionGroup(parser, "Options for building LLVM",
@@ -836,14 +930,15 @@ if __name__ == '__main__':
             default="")
     run_group.add_option('--perf_LLVM', dest='perf_llvm',
         help='compare LLVM 3.3 with "--compare-with", default trunk', default=False, action='store_true')
+    parser.add_option_group(run_group)
     # options for activity "regression search"
     regr_group = OptionGroup(parser, "Options for regression search",
                         "These options must be used with -r and --find-regr options.")
     regr_group.add_option('--start-rev', dest='start_rev',
-        help='start revision for search', default="")
+        help='start revision for search', default="3.4")
     regr_group.add_option('--end-rev', dest='end_rev',
-        help='end revision for search', default="")
-    parser.add_option_group(run_group)
+        help='end revision for search', default="trunk")
+    parser.add_option_group(regr_group)
     # options for activity "setup PATHS"
     setup_group = OptionGroup(parser, "Options for setup",
                     "These options must be use with -r or -b to setup environment variables")

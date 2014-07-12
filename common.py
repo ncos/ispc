@@ -37,6 +37,17 @@ import os
 import errno
 import shutil
 
+def uniq(lst):
+    last = object()
+    for item in lst:
+        if item == last:
+            continue
+        yield item
+        last = item
+
+def sort_and_deduplicate(l):
+    return list(uniq(sorted(l, reverse=True)))
+
 class DictDiffer(object):
     """
     Calculate the difference between two dictionaries as:
@@ -68,7 +79,24 @@ class Test:
     def __repr__(self):
         # Default printout function
         return "%s(%d %d %d)" % (self.name, self.runfailed, self.compfailed, self.skipped)
+    
+    def __eq__(self, other):
+        if isinstance(other, Test):
+            if self.name == other.name             and \
+               self.runfailed == other.runfailed   and \
+               self.compfailed == other.compfailed and \
+               self.skipped == other.compfailed:
+                return True
+            else:
+                return False
+        return NotImplemented
 
+    def __ne__(self, other):
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return result
+        return not result
+        
 
 class TestTable:
     def __init__(self):
@@ -163,7 +191,12 @@ class ExecutionStatGatherer:
                     ret.test_table.table[arch][opt][i] = self.test_table.table[arch][opt][i]
                 for target in target_diff.changed():
                     ret.test_table.add_target(arch,opt, target)
-                    ret.test_table.table[arch][opt][target] = list(set(self.test_table.table[arch][opt][target]).difference( (esg_b.test_table.table[arch][opt][target])))
+                    #TODO: fix uniq function to work properly
+                    #ret.test_table.table[arch][opt][target] = list(set(self.test_table.table[arch][opt][target]) \
+                    #                                 .difference(set(esg_b.test_table.table[arch][opt][target])))
+                    ret.test_table.table[arch][opt][target] = uniq(self.test_table.table[arch][opt][target] + \
+                                                                   esg_b.test_table.table[arch][opt][target])
+        ret.revision = str(int(self.revision) - int(esg_b.revision))
         ret.tests_total = max (self.tests_total, esg_b.tests_total)
         ret.tests_completed = self.tests_completed - esg_b.tests_completed
         ret.tests_skipped = self.tests_skipped - esg_b.tests_skipped
@@ -173,8 +206,10 @@ class ExecutionStatGatherer:
         return ret
 
     def find_worst_test(self):
-        run_fail = 0
-        comp_fail = 0
+        run_fail      = 0
+        comp_fail     = 0
+        str_run_fail  = ""
+        str_comp_fail = ""
         archs = self.test_table.table.keys()
         for arch in archs:
             optimizations = self.test_table.table[arch].keys()
@@ -184,10 +219,10 @@ class ExecutionStatGatherer:
                     for test_ in self.test_table.table[arch][optimization][target]:
                         if test_.runfailed > run_fail:
                             run_fail = test_.runfailed
-                            str_run_fail = arch + " " + optimization + " " + target + " " + test_.name
+                            str_run_fail = arch + " " + optimization + " " + target
                         if test_.compfailed > comp_fail:
                             comp_fail = test_.compfailed
-                            str_comp_fail = arch + " " + optimization + " " + target + " " + test_.name
+                            str_comp_fail = arch + " " + optimization + " " + target
         return [str_run_fail, str_comp_fail] 
         
 ex_state = ExecutionStatGatherer() 

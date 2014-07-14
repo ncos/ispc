@@ -728,9 +728,9 @@ def run_tests(options1, args, print_version):
 
     # Detect opt_set
     if options.no_opt == True:
-        opt = "O0"
+        opt = "-O0"
     else:
-        opt = "O2"
+        opt = "-O2"
 
     common.ex_state.tests_total = common.ex_state.tests_total + total_tests
 

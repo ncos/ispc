@@ -70,7 +70,7 @@ class DictDiffer(object):
         return set(o for o in self.intersect if self.past_dict[o] == self.current_dict[o])
 
 
-class Test:
+class Test(object):
     def __init__(self, name_, runfailed_, compfailed_, skipped_):
         self.name = name_
         self.runfailed = runfailed_
@@ -86,7 +86,7 @@ class Test:
             if self.name == other.name             and \
                self.runfailed == other.runfailed   and \
                self.compfailed == other.compfailed and \
-               self.skipped == other.compfailed:
+               self.skipped == other.skipped:
                 return True
             else:
                 return False
@@ -99,7 +99,7 @@ class Test:
         return not result
         
 
-class TestTable:
+class TestTable(object):
     def __init__(self):
         self.table = {}
 
@@ -139,7 +139,7 @@ class TestTable:
         return str
 
 
-class ExecutionStatGatherer:
+class ExecutionStatGatherer(object):
     def __init__(self):
 
         self.tests_total     = 0

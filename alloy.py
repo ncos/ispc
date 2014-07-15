@@ -40,7 +40,6 @@ def tail_and_save(file_in, file_out, tail = 100):
     with open(file_out, 'w') as f_out:
         f_out.writelines(lines)
 
-
 def attach_mail_file(msg, filename, name, tail = -1):
     if os.path.exists(filename):
         if tail > 0:
@@ -55,7 +54,6 @@ def attach_mail_file(msg, filename, name, tail = -1):
         to_attach.add_header("Content-Disposition", "attachment", filename=name)
         fp.close()
         msg.attach(to_attach)
-
 
 def setting_paths(llvm, ispc, sde):
     if llvm != "":

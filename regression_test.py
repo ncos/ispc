@@ -33,7 +33,6 @@
 
 # // Authors: Anton Mitrokhin, Vsevolod Livinskiy
 from regression import *
-from copy import deepcopy
 import random
 import pickle
 
@@ -45,59 +44,47 @@ OPTS    = ["-O0", "-O2"]
 FNAMES  = ["test0", "test1", "test2", "test3", "test4"]
 
 
-def add_salt(esg, num_entries):
+def add_salt(tt, num_entries, revs):
     for i in xrange(num_entries):
         arch   = ARCHS  [random.randint(0, len(ARCHS  ) - 1)]
         opt    = OPTS   [random.randint(0, len(OPTS   ) - 1)]
         target = TARGETS[random.randint(0, len(TARGETS) - 1)]
-
         fname  = FNAMES [random.randint(0, len(FNAMES ) - 1)]
         
         runfailed  = 0
         compfailed = 0
-        skipped    = 0
         
-        test_result = random.randint(0, 2)
+        test_result = random.randint(0, 1)
         if (test_result == 0):
             runfailed = 1
         if (test_result == 1):
             compfailed = 1
-        if (test_result == 2):
-            skipped = 1
-            
-        test = Test(fname, runfailed, compfailed, skipped)
-        esg.add_test_result(test, arch, opt, target)
+        
+        for rev in revs:
+            tt.add_result(rev, fname, arch, opt, target, runfailed, compfailed)
 
 
 def gen_test_pair(filename):
     with open(filename, 'w') as fp:
-        ex_state_1 = ExecutionStatGatherer()
-        add_salt(ex_state_1, 10)
-        ex_state_2 = deepcopy(ex_state_1)
-        ex_state_intersect = deepcopy(ex_state_1)
-        add_salt(ex_state_1, 10)
-        add_salt(ex_state_2, 15)
-        pickle.dump([ex_state_1, ex_state_2, ex_state_intersect], fp)
+        tt = TestTable()
+        add_salt(tt, 10, ["rev_old", "rev_new", "rev_intersect"])
+
+        add_salt(tt, 10, ["rev_old"])
+        add_salt(tt, 15, ["rev_new"])
+
+        pickle.dump(tt, fp)
 
 
 def read_test_pair(filename):
     with open(filename, 'r') as fp:
-        [ex_state_1, ex_state_2, ex_state_intersect] = pickle.load(fp)
-    
-    return (ex_state_1, ex_state_2, ex_state_intersect)
+        tt = pickle.load(fp) 
+    return tt
         
         
 if __name__ == '__main__':
-    #gen_test_pair("tables.dat")
-    ex_state_1, ex_state_2, ex_state_intersect = read_test_pair("tables.dat")
-    print ex_state_1
-    print "========================="
-    print ex_state_2
-    print "========================="
-    print ex_state_intersect
-
-
-
+    gen_test_pair("tables.dat")
+    tt = read_test_pair("tables.dat")
+    print tt
 
 
 

@@ -33,212 +33,158 @@
 
 # // Authors: Anton Mitrokhin, Vsevolod Livinskiy
 
+class TestResult(object):
+    def __init__(self, runfailed, compfailed):
+        self.runfailed, self.compfailed = (runfailed, compfailed)
+
+    def __cmp__(self, other):
+        if isinstance(other, TestResult):
+            if self.runfailed == other.runfailed   and \
+               self.compfailed == other.compfailed:
+                return 0
+            elif self.runfailed > other.runfailed  or \
+                 self.compfailed > other.compfailed:
+                return 1
+            else:
+                return -1
+        return NotImplemented
+
+    def __repr__(self):
+        if (self.runfailed < 0 or self.compfailed < 0):
+            return "(Undefined)"
+        return "(r%d c%d)" % (self.runfailed, self.compfailed)
 
 
-def uniq(lst):
-    last = object()
-    for item in lst:
-        if item == last:
-            continue
-        yield item
-        last = item
+class TestCase(object):
+    def __init__(self, arch, opt, target):
+        self.arch, self.opt, self.target = (arch, opt, target)
+        self.result = TestResult(-1, -1)
 
-def sort_and_deduplicate(l):
-    return list(uniq(sorted(l, reverse=True)))
+    def __repr__(self):
+        str = "%s %s %s: " % (self.arch, self.opt, self.target)
+        str = str + repr(result) + '\n'
+        return str
 
-class DictDiffer(object):
-    """
-    Calculate the difference between two dictionaries as:
-    (1) items added
-    (2) items removed
-    (3) keys same in both but changed values
-    (4) keys same in both and unchanged values
-    """
-    def __init__(self, current_dict, past_dict):
-        self.current_dict, self.past_dict = current_dict, past_dict
-        self.set_current, self.set_past = set(current_dict.keys()), set(past_dict.keys())
-        self.intersect = self.set_current.intersection(self.set_past)
-    def added(self):
-        return self.set_current - self.intersect 
-    def removed(self):
-        return self.set_past - self.intersect 
-    def changed(self):
-        return set(o for o in self.intersect if self.past_dict[o] != self.current_dict[o])
-    def unchanged(self):
-        return set(o for o in self.intersect if self.past_dict[o] == self.current_dict[o])
+    def __hash__(self):
+        return hash(self.arch + self.opt + self.target)
+
+    def __ne__(self, other):
+        if isinstance(other, TestResult):
+           if hash(self) != hash(other):
+               return True
+           return False
+        return NotImplemented
+
+    def __eq__(self, other):
+        if isinstance(other, TestResult):
+           return not self.__ne__(other)   
+        return NotImplemented
 
 
 class Test(object):
-    def __init__(self, name_, runfailed_, compfailed_, skipped_):
-        self.name = name_
-        self.runfailed = runfailed_
-        self.compfailed = compfailed_
-        self.skipped = skipped_
+    def __init__(self, name):
+        self.name = name
+        self.test_cases = []
+
+    def add_result(self, test_case):
+        if test_case in self.test_cases:
+            raise RuntimeError("This test case is already in the list: " + repr(test_case))
+            return
+        self.test_cases.append(test_case)
 
     def __repr__(self):
-        # Default printout function
-        return "%s(%d %d %d)" % (self.name, self.runfailed, self.compfailed, self.skipped)
+        str = self.name + '\n'
+
+        for test_case in self.test_cases:
+            str += repr(test_case) + '\n'
+            str = str.rjust(30)
+        return str
     
-    def __eq__(self, other):
-        if isinstance(other, Test):
-            if self.name == other.name             and \
-               self.runfailed == other.runfailed   and \
-               self.compfailed == other.compfailed and \
-               self.skipped == other.skipped:
-                return True
-            else:
-                return False
-        return NotImplemented
+    def __hash__(self):
+        return hash(self.name)
 
     def __ne__(self, other):
-        result = self.__eq__(other)
-        if result is NotImplemented:
-            return result
-        return not result
-        
+        if isinstance(other, Test):
+            if hash(self) != hash(other):
+                return True
+            return False
+         return NotImplemented
+
+     def __eq__(self, other):
+         if isinstance(other, Test):
+            return not self.__ne__(other)   
+         return NotImplemented
+
 
 class TestTable(object):
     def __init__(self):
+        ''' This dictionary contains {rev: [test1, test2, ...], ...}, where 'rev' is a string (revision name) and 'test#'
+            is a Test() object instance '''
         self.table = {}
 
-    def add_arch(self, arch):
-        if arch not in self.table:
-            self.table[arch] = {}
-
-    def add_optimization(self, arch, optimization):
-        self.add_arch(arch)
-        if optimization not in self.table[arch]:
-            self.table[arch][optimization] = {}
-    
-    def add_target(self, arch, optimization, target):
-        self.add_optimization(arch, optimization)
-        if target not in self.table[arch][optimization]:
-            self.table[arch][optimization][target] = []
-    
-    def add(self, test, arch, optimization, target):
-        self.add_target(arch, optimization, target)
-        if not test in self.table[arch][optimization][target]:
-            self.table[arch][optimization][target].append(test)
-            return True
-        return False
-    
-    def __sub__(self, other):
-        pass
-
-    def __repr__(self):
-        str = ""
-        archs = self.table.keys()
-        for arch in archs:
-            optimizations = self.table[arch].keys()
-            for optimization in optimizations:
-                targets = self.table[arch][optimization].keys()
-                for target in targets:
-                    str = str + arch + "|" + optimization + "|" + target + "|  \n"
-                    for test_ in self.table[arch][optimization][target]:
-                        if test_.runfailed + test_.compfailed + test_.skipped != 0:
-                            str = str + repr(test_).rjust(70) + "\n"
-        return str
-
-
-class ExecutionStatGatherer(object):
-    def __init__(self):
-
-        self.tests_total     = 0
-        self.tests_completed = 0
-        self.tests_skipped   = 0
-        self.tests_comperr   = 0
-        self.tests_failed    = 0
-        self.tests_succeed   = 0
-
-        self.revision        = "" 
-        self.test_table = TestTable()
-       
-    def add_test_result(self, test, arch, optimization, target):
-        self.test_table.add(test, arch, optimization, target)
-        self.tests_completed += 1
-        self.tests_skipped += test.skipped
-        self.tests_comperr += test.compfailed
-        self.tests_failed += test.runfailed
-        if (test.skipped + test.compfailed + test.runfailed == 0):
-            self.tests_succeed += 1
-
-    def __repr__(self):
-        str = ""
-        str = str + ("ESG: Revision of LLVM %s\n" % (self.revision))
-        str = str + ("ESG: Done %d / %d\n" % (self.tests_completed, self.tests_total))
-        str = str + ("ESG: %d / %d tests SKIPPED\n" % (self.tests_skipped, self.tests_total))
-        str = str + ("ESG: %d / %d tests FAILED compilation\n" % (self.tests_comperr, self.tests_total))
-        str = str + ("ESG: %d / %d tests FAILED execution\n" % (self.tests_failed, self.tests_total))
-        str = str + ("ESG: Passed %d / %d\n" % (self.tests_succeed, self.tests_total))
-        str = str + "\n"
-        str = str + repr(self.test_table)
-        return str
-    
-    
-    def __sub__(self, other):
-        result = ExecutionStatGatherer()
-        result.test_table   = self.test_table - other.test_table
-        result.revision     = str(int(self.revision) - int(other.revision))
-        result.tests_total  = max (self.tests_total, other.tests_total)
-        result.tests_completed  = self.tests_completed - other.tests_completed
-        result.tests_skipped    = self.tests_skipped - other.tests_skipped
-        result.tests_comperr    = self.tests_comperr - other.tests_comperr
-        result.tests_failed     = self.tests_failed - other.tests_failed
-        result.tests_succeed    = self.tests_succeed - other.tests_succeed
-        return result
-
-    def diff (self, esg_b):
-        ret = ExecutionStatGatherer()
-        arch_diff =  DictDiffer(self.test_table.table, esg_b.test_table.table)
-        for i in arch_diff.added():
-            ret.test_table.add_arch(i)
-            ret.test_table.table[i] = self.test_table.table[i]
-        for arch in arch_diff.changed():
-            ret.test_table.add_arch(arch)
-            opt_diff =  DictDiffer(self.test_table.table[arch], esg_b.test_table.table[arch])
-            for i in opt_diff.added():
-                ret.test_table.add_optimization(arch, i)
-                ret.test_table.table[arch][i] = self.test_table.table[arch][i]
-            for opt in opt_diff.changed():
-                ret.test_table.add_optimization(arch, opt)
-                target_diff =  DictDiffer(self.test_table.table[arch][opt], esg_b.test_table.table[arch][opt])
-                for i in target_diff.added():
-                    ret.test_table.add_target(arch, opt, i)
-                    ret.test_table.table[arch][opt][i] = self.test_table.table[arch][opt][i]
-                for target in target_diff.changed():
-                    ret.test_table.add_target(arch, opt, target)
-                    #TODO: fix uniq function to work properly
-                    #ret.test_table.table[arch][opt][target] = list(set(self.test_table.table[arch][opt][target]) \
-                    #                                 .difference(set(esg_b.test_table.table[arch][opt][target])))
-                    ret.test_table.table[arch][opt][target] = uniq(self.test_table.table[arch][opt][target] + \
-                                                                   esg_b.test_table.table[arch][opt][target])
-        ret.revision = str(int(self.revision) - int(esg_b.revision))
-        ret.tests_total = max (self.tests_total, esg_b.tests_total)
-        ret.tests_completed = self.tests_completed - esg_b.tests_completed
-        ret.tests_skipped = self.tests_skipped - esg_b.tests_skipped
-        ret.tests_comperr = self.tests_comperr - esg_b.tests_comperr
-        ret.tests_failed = self.tests_failed - esg_b.tests_failed
-        ret.tests_succeed = self.tests_succeed - esg_b.tests_succeed
-        return ret
-
-    def find_worst_test(self):
-        run_fail      = 0
-        comp_fail     = 0
-        str_run_fail  = ""
-        str_comp_fail = ""
-        archs = self.test_table.table.keys()
-        for arch in archs:
-            optimizations = self.test_table.table[arch].keys()
-            for optimization in optimizations:
-                targets = self.test_table.table[arch][optimization].keys()
-                for target in targets:
-                    for test_ in self.test_table.table[arch][optimization][target]:
-                        if test_.runfailed > run_fail:
-                            run_fail = test_.runfailed
-                            str_run_fail = arch + " " + optimization + " " + target
-                        if test_.compfailed > comp_fail:
-                            comp_fail = test_.compfailed
-                            str_comp_fail = arch + " " + optimization + " " + target
-        return [str_run_fail, str_comp_fail] 
+    def add_result(self, revision_name, test_name, arch, opt, target, runfailed, compfailed):
+        if revision_name not in self.table:
+            self.table[revision_name] = []
         
+        test_case = TestCase(arch, opt, target)
+        test_case.result = TestResult(runfailed, compfailed)
 
+        for test in self.table[revision_name]:
+            if test.name == test_name:
+                test.add_result(test_case)
+                return
+        
+        test = Test(test_name)
+        test.add_result(test_case)
+        self.table[revision_name].append(test)
+
+
+    def test_intersection(test1, test2):
+        ''' Return test cases common for test1 and test2. If test names are different than there is nothing in common '''
+        if test1.name != test2.name:
+            return []
+        return list(set(test1.test_cases) & set(test2.test_cases))
+
+    def test_regression(test1, test2):
+        ''' Return the tuple of empty (i.e. with undefined results) TestCase() objects 
+            corresponding to regression in test2 comparing to test1 '''
+        if test1.name != test2.name:
+            return []
+
+        regressed = []
+        for tc1 in test1.test_cases:
+            for tc2 in test2.test_cases:
+                ''' If test cases are equal (same arch, opt and target) but tc2 has more runfails or compfails '''
+                if tc1 == tc2 and tc1.result < tc2.result:
+                    regressed.append(TestCase(tc1.arch, tc1.opt, tc1.target))
+        return regressed
+
+    def regression(self, revision_old, revision_new):
+        ''' Return a tuple of Test() objects containing TestCase() object which show regression along given revisions '''
+        if revision_new not in self.table:
+            raise RuntimeError("This revision in not in the database: %s (%s)" % (revision_new, str(self.table.keys()))
+            return
+
+        if revision_old not in self.table:
+            raise RuntimeError("This revision in not in the database: %s (%s)" % (revision_old, str(self.table.keys()))
+            return
+
+        regressed = []
+        for test_old in self.table[revision_old]:
+            for test_new in self.table[revision_new]:
+                tr = self.test_regression(test_old, test_new)
+                if len(tr) == 0:
+                    continue
+                test = Test(test_new.name)
+                for test_case in tr:
+                    test.add_result(test_case)
+                regressed.append(test)
+        return regressed
+    
+    def __repr__(self):
+        str = ""
+        for rev in self.table.keys():
+            str += "[" + rev + "]\n"
+            for test in self.table[rev]:
+                str += repr(test).rjust(80) + '\n'
+                

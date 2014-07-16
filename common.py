@@ -39,7 +39,6 @@ import shutil
 from regression import *
 
 
-
 class RevisionInfo(object):
     def __init__(self, hostname, revision):
         self.hostname, self.revision = hostname, revision
@@ -51,6 +50,7 @@ class RevisionInfo(object):
         self.compfailed = 0
         self.skipped = 0
         self.testall = 0
+        self.regressions = {}
     
     def register_test(self, arch, opt, target, succeed, runfailed, compfailed, skipped):
         if arch not in self.archs:
@@ -63,6 +63,17 @@ class RevisionInfo(object):
         self.compfailed += compfailed
         self.skipped += skipped
         self.succeed += succeed
+
+    def add_regression(self, revision, regression_info):
+        ''' input is intended to be from 'TestTable.regression(..)', 'regression_info' is a tuple of RegressionInfo() object
+        (regression.py) and 'revision' is tested (not current) LLVM revision name '''
+        if revision == self.revision:
+            raise RuntimeError("No regression can be found along the same LLVM revision!")
+      
+        if revision in self.regressions:
+            raise RuntimeError("This revision regression info is already in self.regressions!")
+      
+        self.regressions[revision] = regression_info
 
     def __repr__(self):
         string = "%s: LLVM(%s)\n" % (self.hostname, self.revision)

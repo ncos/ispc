@@ -121,6 +121,38 @@ class Test(object):
         return NotImplemented
 
 
+class RegressionInfo(object):
+    def __init__(self, revision_old, revision_new, tests):
+        self.revision_old, self.revision_new = (revision_old, revision_new)
+        self.tests = tests
+        self.archfailes = {}
+        self.optfails = {}
+        self.targetfails = {}
+        self.testfails = {}
+
+        for test in tests:
+            for test_case in test.test_cases:
+                self.inc_dictionary(self.testfails, test.name)
+                self.inc_dictionary(self.archfailes, test_case.arch)
+                self.inc_dictionary(self.optfails, test_case.opt)
+                self.inc_dictionary(self.targetfails, test_case.target)
+
+    def inc_dictionary(self, dictionary, key):
+        if key not in dictionary:
+            dictionary[key] = 0
+        dictionary[key] += 1
+
+    def __repr__(self):
+        string = "Regression of LLVM revision %s in comparison to %s\n" % (self.revision_new, self.revision_old)
+        string += repr(self.tests) + '\n'
+        string += str(self.testfails) + '\n'
+        string += str(self.archfailes) + '\n'
+        string += str(self.optfails) + '\n'
+        string += str(self.targetfails) + '\n'
+
+        return string
+
+        
 class TestTable(object):
     def __init__(self):
         ''' This dictionary contains {rev: [test1, test2, ...], ...}, where 'rev' is a string (revision name) and 'test#'
@@ -184,7 +216,7 @@ class TestTable(object):
                 for test_case in tr:
                     test.add_result(test_case)
                 regressed.append(test)
-        return regressed
+        return RegressionInfo(revision_old, revision_new, regressed)
     
     def __repr__(self):
         string = ""

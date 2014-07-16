@@ -97,9 +97,10 @@ def read_test_pair(filename):
 if __name__ == '__main__':
     #gen_test_pair("tables.dat")
     tt = read_test_pair("test_table.dump")
-    print tt
+    #print tt
     print "\n\n ------------------------\n\n"
-    #print tt.regression("rev_old", "rev_new")
+    print "Avaluable LLVM revisions:", tt.table.keys()
+    print tt.regression(tt.table.keys()[1], tt.table.keys()[0])
 
 
 

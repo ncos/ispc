@@ -42,11 +42,15 @@ class TestResult(object):
             if self.runfailed == other.runfailed   and \
                self.compfailed == other.compfailed:
                 return 0
-            elif self.runfailed > other.runfailed  or \
-                 self.compfailed > other.compfailed:
+            elif self.compfailed > other.compfailed:
+                return 1
+            elif self.runfailed > other.runfailed and \
+                 self.compfailed == other.compfailed:
                 return 1
             else:
                 return -1
+
+        raise RuntimeError("Wrong type for comparioson")
         return NotImplemented
 
     def __repr__(self):
@@ -69,15 +73,17 @@ class TestCase(object):
         return hash(self.arch + self.opt + self.target)
 
     def __ne__(self, other):
-        if isinstance(other, TestResult):
-           if hash(self) != hash(other):
-               return True
-           return False
+        if isinstance(other, TestCase):
+            if hash(self.arch + self.opt + self.target) != hash(other):
+                return True
+            return False
+        raise RuntimeError("Wrong type for comparioson")
         return NotImplemented
 
     def __eq__(self, other):
-        if isinstance(other, TestResult):
-           return not self.__ne__(other)   
+        if isinstance(other, TestCase):
+            return not self.__ne__(other)   
+        raise RuntimeError("Wrong type for comparioson")
         return NotImplemented
 
 
@@ -138,13 +144,13 @@ class TestTable(object):
         self.table[revision_name].append(test)
 
 
-    def test_intersection(test1, test2):
+    def test_intersection(self, test1, test2):
         ''' Return test cases common for test1 and test2. If test names are different than there is nothing in common '''
         if test1.name != test2.name:
             return []
         return list(set(test1.test_cases) & set(test2.test_cases))
 
-    def test_regression(test1, test2):
+    def test_regression(self, test1, test2):
         ''' Return the tuple of empty (i.e. with undefined results) TestCase() objects 
             corresponding to regression in test2 comparing to test1 '''
         if test1.name != test2.name:

@@ -31,7 +31,7 @@
 #   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 #   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# // Authors: Anton Mitrokhin, Vsevolod Livinskiy
+# // Authors: Anton Mitrokhin
 from regression import *
 import random
 import pickle
@@ -64,13 +64,26 @@ def add_salt(tt, num_entries, revs):
             tt.add_result(rev, fname, arch, opt, target, runfailed, compfailed)
 
 
+def add_regression(tt, num_entries, rev1, rev2):
+    for i in xrange(num_entries):
+        arch   = ARCHS  [random.randint(0, len(ARCHS  ) - 1)]
+        opt    = OPTS   [random.randint(0, len(OPTS   ) - 1)]
+        target = TARGETS[random.randint(0, len(TARGETS) - 1)]
+        fname  = FNAMES [random.randint(0, len(FNAMES ) - 1)]
+        
+        tt.add_result(rev1, fname, arch, opt, target, 0, 0)   
+        tt.add_result(rev2, fname, arch, opt, target, 1, 0)
+
+
 def gen_test_pair(filename):
     with open(filename, 'w') as fp:
         tt = TestTable()
-        add_salt(tt, 10, ["rev_old", "rev_new", "rev_intersect"])
 
-        add_salt(tt, 10, ["rev_old"])
-        add_salt(tt, 15, ["rev_new"])
+        add_regression(tt, 4, "rev_old", "rev_new")
+        #add_salt(tt, 5, ["rev_old", "rev_new"])
+
+        add_salt(tt, 5, ["rev_old"])
+        add_salt(tt, 3, ["rev_new"])
 
         pickle.dump(tt, fp)
 
@@ -82,9 +95,11 @@ def read_test_pair(filename):
         
         
 if __name__ == '__main__':
-    #gen_test_pair("tables.dat")
+    gen_test_pair("tables.dat")
     tt = read_test_pair("tables.dat")
     print tt
+    print "\n\n ------------------------\n\n"
+    print tt.regression("rev_old", "rev_new")
 
 
 

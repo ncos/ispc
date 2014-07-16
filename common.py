@@ -38,9 +38,110 @@ import errno
 import shutil
 from regression import *
 
+
+
+class RevisionInfo(object):
+    def __init__(self, hostname, revision):
+        self.hostname, self.revision = hostname, revision
+        self.archs = []
+        self.opts = []
+        self.targets = []
+        self.succeed = 0
+        self.runfailed = 0
+        self.compfailed = 0
+        self.skipped = 0
+        self.testall = 0
+    
+    def register_test(self, arch, opt, target, succeed, runfailed, compfailed, skipped):
+        if arch not in self.archs:
+            self.archs.append(arch)
+        if opt not in self.opts:
+            self.opts.append(opt)
+        if target not in self.targets:
+            self.targets.append(target)
+        self.runfailed += runfailed
+        self.compfailed += compfailed
+        self.skipped += skipped
+        self.succeed += succeed
+
+    def __repr__(self):
+        string = "%s: LLVM(%s)\n" % (self.hostname, self.revision)
+        string += "archs  : %s\n" % (str(self.archs))
+        string += "opts   : %s\n" % (str(self.opts))
+        string += "targets: %s\n" % (str(self.targets))
+        string += "runfails: %d/%d\n" % (self.runfailed, self.testall)
+        string += "compfails: %d/%d\n" % (self.compfailed, self.testall)
+        string += "skipped: %d/%d\n" % (self.skipped, self.testall)
+        string += "succeed: %d/%d\n" % (self.succeed, self.testall)
+        return string
+
+class ExecutionStateGatherer(object):
+    def __init__(self):
+        self.hostname = self.get_host_name()
+        self.revision = ""
+        self.rinf = []
+        self.tt = TestTable()
+
+    def switch_revision(self, revision):
+        print "Switching revision to " + revision
+        self.revision = revision
+        self.rinf.append(RevisionInfo(self.hostname, self.revision))
+
+    def current_rinf(self):
+        if len(self.rinf) == 0:
+            raise RuntimeError("self.rinf is empty. Apparently you've never invoked switch_revision")
+        return self.rinf[len(self.rinf) - 1]
+
+    def add_to_tt(self, test_name, arch, opt, target, runfailed, compfailed):
+        if len(self.rinf) == 0:
+            raise RuntimeError("self.rinf is empty. Apparently you've never invoked switch_revision")
+        self.tt.add_result(self.revision, test_name, arch, opt, target, runfailed, compfailed)
+
+    def add_to_rinf(self, arch, opt, target, succeed, runfailed, compfailed, skipped):
+        self.current_rinf().register_test(arch, opt, target, succeed, runfailed, compfailed, skipped)
+
+    def add_to_rinf_testall(self, tried_to_test):
+        self.current_rinf().testall += tried_to_test
+
+    def dump(self, fname, obj):
+        import pickle
+        with open(fname, 'w') as fp:
+            pickle.dump(obj, fp)  
+
+    def undump(self, fname):
+        import pickle
+        with open(fname, 'r') as fp:
+            obj = pickle.load(fp) 
+        return obj
+
+    def get_host_name(self):
+        import socket
+        return socket.gethostname()
+
+    def __repr__(self):
+        string = "Hostname: %s\n" % (self.hostname)
+        string += "Current LLVM Revision = %s\n\n" % (self.revision)
+        for rev_info in self.rinf:
+            string += repr(rev_info) + '\n'
+        return string
+
+
 # this class instance is intended to gather and store all information
-# regarding the build and test process. Defined in 'regression.py'
-ex_state = ExecutionStatGatherer() 
+# regarding the testing process. Defined in 'regression.py'
+ex_state = ExecutionStateGatherer()
+
+# load/save almost every object to a file (good for bug reproducing)
+def dump(fname, obj):
+    import pickle
+    with open(fname, 'w') as fp:
+        pickle.dump(obj, fp)  
+
+
+def undump(fname):
+    import pickle
+    with open(fname, 'r') as fp:
+        obj = pickle.load(fp) 
+    return obj
 
 # retrieve the host name
 def get_host_name():

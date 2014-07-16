@@ -95,11 +95,11 @@ def read_test_pair(filename):
         
         
 if __name__ == '__main__':
-    gen_test_pair("tables.dat")
-    tt = read_test_pair("tables.dat")
+    #gen_test_pair("tables.dat")
+    tt = read_test_pair("test_table.dump")
     print tt
     print "\n\n ------------------------\n\n"
-    print tt.regression("rev_old", "rev_new")
+    #print tt.regression("rev_old", "rev_new")
 
 
 

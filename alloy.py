@@ -326,7 +326,7 @@ def build_ispc(version_LLVM, make):
         info_llvm = re.split('\n', info_llvm)
         for i in info_llvm:
             if len(i) > 0 and i.startswith("Last Changed Rev: "):
-                common.ex_state.revision = i[len("Last Changed Rev: "):]
+                common.ex_state.switch_revision(str(i[len("Last Changed Rev: "):]))
         
         try_do_LLVM("recognize LLVM revision", "svn info " + folder, True)
         try_do_LLVM("build ISPC with LLVM version " + version_LLVM + " ", make, True)
@@ -663,7 +663,8 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
             attach_mail_file(msg, "." + os.sep + "logs" + os.sep + "perf_build.log", "perf_build.log")
 
 # sending e-mail with results
-    #print common.ex_state
+    print common.ex_state
+    common.ex_state.dump("test_table_0.dump", common.ex_state.tt)
     if options.notify != "":
         fp = open(os.environ["ISPC_HOME"] + os.sep + "notify_log.log", 'rb')
         f_lines = fp.readlines()
@@ -754,6 +755,9 @@ def Main():
         if options.find_regr:
             regr_found = False
             init_flag = False
+            error("find_regr is not implemented yet!", 2)
+
+            '''
             end_ex_state = common.ExecutionStatGatherer()
             start_ex_state = common.ExecutionStatGatherer()
             prev_ex_state = common.ExecutionStatGatherer()
@@ -828,7 +832,7 @@ def Main():
                         else:
                             end_ex_state = copy.deepcopy(start_ex_state)
                             options.start_rev = str((int(prev_ex_state.revision) + int(start_ex_state.revision)) / 2)
-                    
+                    '''
         elapsed_time = time.time() - start_time
         if options.time:
             print_debug("Elapsed time: " + time.strftime('%Hh%Mm%Ssec.', time.gmtime(elapsed_time)) + "\n", False, "")

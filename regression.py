@@ -65,9 +65,9 @@ class TestCase(object):
         self.result = TestResult(-1, -1)
 
     def __repr__(self):
-        str = "%s %s %s: " % (self.arch, self.opt, self.target)
-        str = str + repr(self.result) + '\n'
-        return str
+        string = "%s %s %s: " % (self.arch, self.opt, self.target)
+        string = string + repr(self.result) + '\n'
+        return string
 
     def __hash__(self):
         return hash(self.arch + self.opt + self.target)
@@ -99,11 +99,11 @@ class Test(object):
         self.test_cases.append(test_case)
 
     def __repr__(self):
-        str = self.name + '\n'
-        str = str.rjust(10)
+        string = self.name + '\n'
+        string = string.rjust(20)
         for test_case in self.test_cases:
-            str += repr(test_case).rjust(40) + '\n'
-        return str
+            string += repr(test_case).rjust(60) + '\n'
+        return string
     
     def __hash__(self):
         return hash(self.name)
@@ -187,9 +187,11 @@ class TestTable(object):
         return regressed
     
     def __repr__(self):
-        str = ""
+        string = ""
         for rev in self.table.keys():
-            str += "[" + rev + "]:\n"
+            string += "[" + rev + "]:\n"
             for test in self.table[rev]:
-                str += repr(test) + '\n'
-        return str
+                string += repr(test) + '\n'
+        return string
+
+ 

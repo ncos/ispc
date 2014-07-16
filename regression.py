@@ -62,7 +62,7 @@ class TestCase(object):
 
     def __repr__(self):
         str = "%s %s %s: " % (self.arch, self.opt, self.target)
-        str = str + repr(result) + '\n'
+        str = str + repr(self.result) + '\n'
         return str
 
     def __hash__(self):
@@ -94,10 +94,9 @@ class Test(object):
 
     def __repr__(self):
         str = self.name + '\n'
-
+        str = str.rjust(10)
         for test_case in self.test_cases:
-            str += repr(test_case) + '\n'
-            str = str.rjust(30)
+            str += repr(test_case).rjust(40) + '\n'
         return str
     
     def __hash__(self):
@@ -108,12 +107,12 @@ class Test(object):
             if hash(self) != hash(other):
                 return True
             return False
-         return NotImplemented
+        return NotImplemented
 
-     def __eq__(self, other):
-         if isinstance(other, Test):
+    def __eq__(self, other):
+        if isinstance(other, Test):
             return not self.__ne__(other)   
-         return NotImplemented
+        return NotImplemented
 
 
 class TestTable(object):
@@ -162,11 +161,11 @@ class TestTable(object):
     def regression(self, revision_old, revision_new):
         ''' Return a tuple of Test() objects containing TestCase() object which show regression along given revisions '''
         if revision_new not in self.table:
-            raise RuntimeError("This revision in not in the database: %s (%s)" % (revision_new, str(self.table.keys()))
+            raise RuntimeError("This revision in not in the database: " + revision_new + " (" + str(self.table.keys()) + ")")
             return
 
         if revision_old not in self.table:
-            raise RuntimeError("This revision in not in the database: %s (%s)" % (revision_old, str(self.table.keys()))
+            raise RuntimeError("This revision in not in the database: " + revision_old + " (" + str(self.table.keys()) + ")")
             return
 
         regressed = []
@@ -184,7 +183,7 @@ class TestTable(object):
     def __repr__(self):
         str = ""
         for rev in self.table.keys():
-            str += "[" + rev + "]\n"
+            str += "[" + rev + "]:\n"
             for test in self.table[rev]:
-                str += repr(test).rjust(80) + '\n'
-                
+                str += repr(test) + '\n'
+        return str

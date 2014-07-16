@@ -82,7 +82,7 @@ def read_test_pair(filename):
         
         
 if __name__ == '__main__':
-    gen_test_pair("tables.dat")
+    #gen_test_pair("tables.dat")
     tt = read_test_pair("tables.dat")
     print tt
 

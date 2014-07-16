@@ -252,7 +252,12 @@ def check_targets():
     answer_sde = []
     # check what native targets do we have
     if current_OS != "Windows":
-        try_do_LLVM("build check_ISA", "clang check_isa.cpp -o check_isa.exe", True)
+        if options.ispc_build_compiler == "clang":
+            cisa_compiler = "clang"
+        elif options.ispc_build_compiler == "gcc":
+            cisa_compiler = "g++"
+
+        try_do_LLVM("build check_ISA", cisa_compiler + " check_isa.cpp -o check_isa.exe", True)
     else:
         try_do_LLVM("build check_ISA", "cl check_isa.cpp", True)
     SSE2  = ["sse2-i32x4",  "sse2-i32x8"]
@@ -309,6 +314,9 @@ def check_targets():
 def build_ispc(version_LLVM, make):
     current_path = os.getcwd()
     os.chdir(os.environ["ISPC_HOME"])
+
+    make_ispc = "make " + options.ispc_build_compiler + " -j" + options.speed
+
     if current_OS != "Windows":
         p_temp = os.getenv("PATH")
         os.environ["PATH"] = os.environ["LLVM_HOME"] + "/bin-" + version_LLVM + "/bin:" + os.environ["PATH"]
@@ -329,7 +337,7 @@ def build_ispc(version_LLVM, make):
                 common.ex_state.switch_revision(str(i[len("Last Changed Rev: "):]))
         
         try_do_LLVM("recognize LLVM revision", "svn info " + folder, True)
-        try_do_LLVM("build ISPC with LLVM version " + version_LLVM + " ", make, True)
+        try_do_LLVM("build ISPC with LLVM version " + version_LLVM + " ", make_ispc, True)
         os.environ["PATH"] = p_temp
     else:
         p_temp = os.getenv("LLVM_INSTALL_DIR")
@@ -705,6 +713,14 @@ def Main():
         parser.print_help()
         exit(0)
 
+    # set appropriate makefile target
+    # gcc and g++ options are equal and added for ease of use 
+    if options.ispc_build_compiler != "clang" and \
+       options.ispc_build_compiler != "gcc":   
+        error("unknow option for --ispc-build-compiler: " + options.ispc_build_compiler, 1)
+        parser.print_help()
+        exit(0)
+
     setting_paths(options.llvm_home, options.ispc_home, options.sde_home)
     if os.environ.get("LLVM_HOME") == None:
         error("you have no LLVM_HOME", 1)
@@ -903,7 +919,9 @@ if __name__ == '__main__':
     parser.add_option('-j', dest='speed',
         help='set -j for make', default=num_threads)
     parser.add_option( '-f', '--find-regr', dest='find_regr',
-        help='ask for regression search', default=False, action="store_true")
+        help='start regression test', default=False, action="store_true")
+    parser.add_option('--ispc-build-compiler', dest='ispc_build_compiler',
+        help='set compiler to build ispc binary (clang/gcc)', default="clang")
     # options for activity "build LLVM"
     llvm_group = OptionGroup(parser, "Options for building LLVM",
                     "These options must be used with -b option.")

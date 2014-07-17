@@ -114,6 +114,15 @@ class ExecutionStateGatherer(object):
     def add_to_rinf_testall(self, tried_to_test):
         self.current_rinf().testall += tried_to_test
 
+    def load_from_tt(self, tt):
+        # TODO: fill in self.rinf field!
+        self.tt = tt
+        REVISIONS = tt.table.keys()
+        self.revision = ""
+        if len(REVISIONS) != 0:
+            self.revision = REVISIONS[0]
+        print "ESG: loaded from 'TestTable()' with revisions", REVISIONS
+
     def dump(self, fname, obj):
         import pickle
         with open(fname, 'w') as fp:

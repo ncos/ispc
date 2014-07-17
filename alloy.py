@@ -89,7 +89,7 @@ def try_do_LLVM(text, command, from_validation):
             attach_mail_file(msg, alloy_build, "alloy_build.log", 400)
             attach_mail_file(msg, stability_log, "stability.log")
             send_mail("Error while executing " + command + ". Examine logs  for more information.", msg)
-        error("can't " + text, 1)
+        raise RuntimeError("FatalError: can't " + text)
     print_debug("DONE.\n", from_validation, alloy_build)
 
 def build_LLVM(version_LLVM, revision, folder, tarball, debug, selfbuild, extra, from_validation, force, make):
@@ -671,8 +671,8 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
             attach_mail_file(msg, "." + os.sep + "logs" + os.sep + "perf_build.log", "perf_build.log")
 
 # sending e-mail with results
-    print common.ex_state
-    common.ex_state.dump("test_table_0.dump", common.ex_state.tt)
+    #print common.ex_state
+    common.ex_state.dump("test_table.dump", common.ex_state.tt)
     if options.notify != "":
         fp = open(os.environ["ISPC_HOME"] + os.sep + "notify_log.log", 'rb')
         f_lines = fp.readlines()
@@ -697,6 +697,87 @@ def send_mail(body, msg):
         s.sendmail(options.notify, options.notify.split(" "), msg.as_string())
         s.quit()
 
+
+
+def check_rev_input(revision_name):
+    shortcuts = ["3.1", "3.2", "3.3", "3.4", "trunk"]
+    rev_pattern = re.compile("^[R]([0-9]+)$")
+
+    if len(revision_name) == 0:
+        return False
+
+    if revision_name in shortcuts:
+        return True
+
+    if rev_pattern.match(revision_name) != None:
+        return True
+
+    return False
+
+
+def rnumber_from_name(revision_name):
+    # TODO: here we would possibly like to return shortcuts translated to actual revision numbers 
+    if not check_rev_input(revision_name):
+        return False
+
+    rev_pattern = re.compile("^[R]([0-9]+)$")
+    if rev_pattern.match(revision_name) != None:
+        return int(revision_name[1:])
+
+    # FIXME: revision numbers should be updated on every launch
+    if revision_name == "trunk":
+        return 213190
+
+    if revision_name == "3.4":
+        return 210929
+
+    return False
+    
+
+class RegressionTest(object):
+    def __init__(self, revnum_left, revnum_rght):
+        midl_revision = (revnum_rght + revnum_left) / 2
+
+        print_debug("Regression test started with revisions (R%d, R%d)\n" % (revnum_left, revnum_rght), False, stability_log)
+        self.REVISIONS_DB = common.ex_state.tt.table.keys() # revisions tested by this time
+
+        targets = ['sse4-i32x4']
+        opts    = ['-O0']
+        archs   = ['x86']
+
+        # load ESG from backup (if it exists)
+        old_tt = common.ex_state.undump("test_table.dump")
+        common.ex_state.load_from_tt(old_tt)
+        self.REVISIONS_DB = common.ex_state.tt.table.keys()
+
+        self.test_between(revnum_left, revnum_rght, archs, opts, targets)
+
+    def test_between(self, revnum_left, revnum_rght, archs, opts, targets):
+        revnum_midl = (revnum_rght + revnum_left) / 2
+        self.refresh_esg(revnum_left, archs, opts, targets)
+        self.refresh_esg(revnum_rght, archs, opts, targets)
+        self.refresh_esg(revnum_midl, archs, opts, targets)
+
+        regr_old_mid = common.ex_state.tt.regression(revnum_left, revnum_midl)
+        regr_mid_new = common.ex_state.tt.regression(revnum_midl, revnum_rght)
+
+        print regr_old_mid
+        print "\n---------------------------\n"
+        print regr_mid_new
+
+    def refresh_esg(self, revnum, archs, opts, targets):
+        # do validation run in case the data is not in a table
+        only = 'R' + str(revnum) + ' ' + ' '.join(opts) + ' ' + ' '.join(archs) + ' stability'
+        only_targets = ' '.join(targets)
+        self.REVISIONS_DB = common.ex_state.tt.table.keys()
+        if not str(revnum) in self.REVISIONS_DB:
+            print_debug("LLVM revision %d is not found in a 'tt'. Downloading and testing...\n" % (revnum), False, stability_log)
+            print_debug("Doing alloy.py -r --only='" + only + "' --only-targets = '" + only_targets + "' -j" + str(options.speed) + 
+                                                                 " options.time = '" + str(options.time) + "'\n", False, stability_log)
+            validation_run(only, only_targets, '', 0, '', '', int(options.speed), 'make -j' + str(options.speed), False, options.time)
+        else:
+            pass # TODO: check here that we have all targets/opts/archs in table
+
 def Main():
     global current_OS
     global current_OS_version
@@ -709,15 +790,14 @@ def Main():
         else:
             current_OS = "Linux" 
 
-    if (options.build_llvm == False and options.validation_run == False and options.find_regr == False):
+    if (options.build_llvm == False and options.validation_run == False and options.regression_test == False):
         parser.print_help()
         exit(0)
 
-    # set appropriate makefile target
-    # gcc and g++ options are equal and added for ease of use 
+    # set appropriate makefile target for ispc binary build
     if options.ispc_build_compiler != "clang" and \
        options.ispc_build_compiler != "gcc":   
-        error("unknow option for --ispc-build-compiler: " + options.ispc_build_compiler, 1)
+        error("unknown option for --ispc-build-compiler: " + options.ispc_build_compiler, 1)
         parser.print_help()
         exit(0)
 
@@ -754,8 +834,7 @@ def Main():
     current_path = os.getcwd()
     make = "make -j" + options.speed
     if os.environ["ISPC_HOME"] != os.getcwd():
-        error("you ISPC_HOME and your current path are different! (" + os.environ["ISPC_HOME"] + " is not equal to " + os.getcwd() +
-        ")\n", 2)
+        error("you ISPC_HOME and your current path are different! (" + os.environ["ISPC_HOME"] + " is not equal to " + os.getcwd() + ")\n", 2)
     if options.perf_llvm == True:
         if options.branch == "master":
             options.branch = "trunk"
@@ -768,87 +847,23 @@ def Main():
             validation_run(options.only, options.only_targets, options.branch,
                     options.number_for_performance, options.notify, options.update, int(options.speed),
                     make, options.perf_llvm, options.time)
-        if options.find_regr:
-            regr_found = False
-            init_flag = False
-            error("find_regr is not implemented yet!", 2)
+        if options.regression_test:
+            # TODO: lets translate standard revision names to revision numbers!
+            # check arguments here:
+            if not check_rev_input(options.start_rev):
+                raise RuntimeError("Invalid revision name: " + options.start_rev)
 
-            '''
-            end_ex_state = common.ExecutionStatGatherer()
-            start_ex_state = common.ExecutionStatGatherer()
-            prev_ex_state = common.ExecutionStatGatherer()
-            
-            print "DEBUG: start options"
-            print "R" + options.end_rev  + " " + options.only
-            validation_run("R" + options.end_rev + " " + options.only, options.only_targets, options.branch,
-                    options.number_for_performance, options.notify, options.update, int(options.speed),
-                    make, options.perf_llvm, options.time)
-            end_ex_state = copy.deepcopy(common.ex_state)
-            end_test_set = end_ex_state.find_worst_test()
-            common.ex_state = common.ExecutionStatGatherer()
-            end_test_set[0] = (end_test_set[0]).split()
-            end_test_set[1] = (end_test_set[1]).split()
-            print "DEBUG: test set"
-            print end_test_set[0]
-            print end_test_set[1]
-            print " ".join(end_test_set[0][:-1])
-            print " ".join(end_test_set[1][:-1])
+            if not check_rev_input(options.end_rev):
+                raise RuntimeError("Invalid revision name: " + options.end_rev)
 
-            if end_test_set == ["",""]:
-                print "Everything is OK. No fails."
-            else:
-                while not regr_found:
-                    print "DEBUG: cycle options"
-                    print "stability " + "R" + options.start_rev + " " + " ".join(end_test_set[0][:-1]) + " " + " ".join(end_test_set[1][:-1])
-                    print " ".join(end_test_set[0][-1:]) + " " + " ".join(end_test_set[1][-1:])
-                    validation_run("stability " + "R" + options.start_rev + " " + 
-                        " ".join(end_test_set[0][:-1]) + " " + " ".join(end_test_set[1][:-1]),
-                        " ".join(end_test_set[0][-1:]) + " " + " ".join(end_test_set[1][-1:]),
-                         options.branch, options.number_for_performance,
-                        options.notify, options.update, int(options.speed),
-                        make, options.perf_llvm, options.time)
-                    start_ex_state = copy.deepcopy(common.ex_state)
-                    common.ex_state = common.ExecutionStatGatherer()
-                    # TODO: fix comparison
-                    diff_end_start = common.ExecutionStatGatherer()
-                    diff_end_start = end_ex_state.diff(start_ex_state)
-                    if (diff_end_start.tests_failed == 0 and diff_end_start.tests_comperr == 0):
-                        print "No regression found"
-                        regr_found = True
-                        break
-                    if abs(int(end_ex_state.revision) - int(start_ex_state.revision)) <= 1:
-                        print "regression in" + start_ex_state.revision
-                        regr_found = True
-                        break
-                    print "\n" + "DEBUG !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" + "\n"
-                    print prev_ex_state
-                    print start_ex_state
-                    print end_ex_state
-                    if not init_flag:
-                        prev_ex_state = copy.deepcopy(start_ex_state)
-                        options.start_rev = str((int(start_ex_state.revision) + int(end_ex_state.revision)) / 2)
-                    else:
-                        diff_start_prev = common.ExecutionStatGatherer()
-                        diff_start_prev = start_ex_state.diff(prev_ex_state)
-                        #if (diff_end_start.tests_failed + diff_end_start.tests_comperr > \
-                        #    diff_start_prev.tests_failed + diff_start_prev.tests_comperr):
-                        # TODO: fix comparison and situation ['']
-                        rf = end_ex_state[0]
-                        cf = end_ex_state[1]
-                        if (len(end_ex_state.table_test.table[rf[0]][rf[1]][rf[2]])   + 
-                            len(end_ex_state.table_test.table[cf[0]][cf[1]][cf[2]])   -
-                            len(start_ex_state.table_test.table[rf[0]][rf[1]][rf[2]]) +
-                            len(start_ex_state.table_test.table[cf[0]][cf[1]][cf[2]]) >
-                            len(start_ex_state.table_test.table[rf[0]][rf[1]][rf[2]]) +
-                            len(start_ex_state.table_test.table[cf[0]][cf[1]][cf[2]]) -
-                            len(prev_ex_state.table_test.table[rf[0]][rf[1]][rf[2]])  +
-                            len(prev_ex_state.table_test.table[cf[0]][cf[1]][cf[2]])):
-                            prev_ex_state = copy.deepcopy(start_ex_state)
-                            options.start_rev = str((int(start_ex_state.revision) + int(end_ex_state.revision)) / 2)
-                        else:
-                            end_ex_state = copy.deepcopy(start_ex_state)
-                            options.start_rev = str((int(prev_ex_state.revision) + int(start_ex_state.revision)) / 2)
-                    '''
+            if not rnumber_from_name(options.start_rev) < rnumber_from_name(options.end_rev):
+                raise RuntimeError("First rev. number(%d) should be smaller than the second one(%d)!" %
+                        (rnumber_from_name(options.start_rev), rnumber_from_name(options.end_rev)))
+
+            # this class does all job here
+            rt = RegressionTest(rnumber_from_name(options.start_rev), rnumber_from_name(options.end_rev))
+
+
         elapsed_time = time.time() - start_time
         if options.time:
             print_debug("Elapsed time: " + time.strftime('%Hh%Mm%Ssec.', time.gmtime(elapsed_time)) + "\n", False, "")
@@ -911,15 +926,15 @@ if __name__ == '__main__':
 
 
     num_threads="%s" % multiprocessing.cpu_count()
-    parser = MyParser(usage="Usage: alloy.py -r/-b [options]", epilog=examples)
+    parser = MyParser(usage="Usage: alloy.py -r/-b/-s [options]", epilog=examples)
     parser.add_option('-b', '--build-llvm', dest='build_llvm',
         help='ask to build LLVM', default=False, action="store_true")
     parser.add_option('-r', '--run', dest='validation_run',
         help='ask for validation run', default=False, action="store_true")
     parser.add_option('-j', dest='speed',
         help='set -j for make', default=num_threads)
-    parser.add_option( '-f', '--find-regr', dest='find_regr',
-        help='start regression test', default=False, action="store_true")
+    parser.add_option('-s', '--regression-test', dest='regression_test',
+        help='run regression test', default=False, action="store_true")
     parser.add_option('--ispc-build-compiler', dest='ispc_build_compiler',
         help='set compiler to build ispc binary (clang/gcc)', default="clang")
     # options for activity "build LLVM"
@@ -944,7 +959,7 @@ if __name__ == '__main__':
     parser.add_option_group(llvm_group)
     # options for activity "validation run"
     run_group = OptionGroup(parser, "Options for validation run",
-                    "These options must be used with -r option.")
+                    "These options should be used with -r option.")
     run_group.add_option('--compare-with', dest='branch',
         help='set performance reference point. Dafault: master', default="master")
     run_group.add_option('--number', dest='number_for_performance',
@@ -966,9 +981,9 @@ if __name__ == '__main__':
     run_group.add_option('--perf_LLVM', dest='perf_llvm',
         help='compare LLVM 3.3 with "--compare-with", default trunk', default=False, action='store_true')
     parser.add_option_group(run_group)
-    # options for activity "regression search"
+    # options for activity "regression test"
     regr_group = OptionGroup(parser, "Options for regression search",
-                        "These options must be used with -r and --find-regr options.")
+                    "These options should be used with -s --regression-test options.")
     regr_group.add_option('--start-rev', dest='start_rev',
         help='start revision for search', default="3.4")
     regr_group.add_option('--end-rev', dest='end_rev',
@@ -976,7 +991,7 @@ if __name__ == '__main__':
     parser.add_option_group(regr_group)
     # options for activity "setup PATHS"
     setup_group = OptionGroup(parser, "Options for setup",
-                    "These options must be use with -r or -b to setup environment variables")
+                    "These options should be used with -r or -b to setup environment variables")
     setup_group.add_option('--llvm_home', dest='llvm_home',help='path to LLVM',default="")
     setup_group.add_option('--ispc_home', dest='ispc_home',help='path to ISPC',default="")
     setup_group.add_option('--sde_home', dest='sde_home',help='path to SDE',default="")

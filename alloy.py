@@ -84,12 +84,13 @@ def try_do_LLVM(text, command, from_validation):
         postfix = " >> " + alloy_build + " 2>> " + alloy_build
     if os.system(command + postfix) != 0:
         print_debug("ERROR.\n", from_validation, alloy_build)
+        print_debug("Error while executing " + command + "\n", False, stability_log) 
         if options.notify != "":
             msg = MIMEMultipart()
             attach_mail_file(msg, alloy_build, "alloy_build.log", 400)
             attach_mail_file(msg, stability_log, "stability.log")
             send_mail("Error while executing " + command + ". Examine logs  for more information.", msg)
-        raise RuntimeError("FatalError: can't " + text)
+        raise RuntimeError("Error in try_do_LLVM: can't " + text)
     print_debug("DONE.\n", from_validation, alloy_build)
 
 def build_LLVM(version_LLVM, revision, folder, tarball, debug, selfbuild, extra, from_validation, force, make):
@@ -314,20 +315,23 @@ def check_targets():
 def build_ispc(version_LLVM, make):
     current_path = os.getcwd()
     os.chdir(os.environ["ISPC_HOME"])
-
+    
+    print_debug("...Building ISPC with " + str(version_LLVM) + "\n", False, alloy_build)
     make_ispc = "make " + options.ispc_build_compiler + " -j" + options.speed
 
     if current_OS != "Windows":
         p_temp = os.getenv("PATH")
         os.environ["PATH"] = os.environ["LLVM_HOME"] + "/bin-" + version_LLVM + "/bin:" + os.environ["PATH"]
         try_do_LLVM("clean ISPC for building", "make clean", True)
-        
+        print_debug("...Adding to PATH: " + os.environ["LLVM_HOME"] + "/bin-" + version_LLVM + "/bin:\n", False, alloy_build)
+
         folder = os.environ["LLVM_HOME"]  + os.sep + "llvm-" 
         if options.folder == "":
             folder += version_LLVM
         if options.debug == True:
             folder +=  "dbg"
-       
+        
+        print_debug("...Folder is:  " + folder + "\n", False, alloy_build)
         p = subprocess.Popen("svn info " + folder, shell=True, \
                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (info_llvm, err) = p.communicate()
@@ -441,6 +445,9 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
         LLVM_revisions = []
         targets = []
         sde_targets = []
+# sometimes clang++ is not avaluable. if --ispc-build-compiler = gcc we will pass in g++ compiler
+        if options.ispc_build_compiler == "gcc":
+            stability.compiler_exe = "g++"
 # parsing option only, update parameters of run
         if "-O2" in only:
             opts.append(False)
@@ -521,8 +528,8 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
         for i in range(0,len(need_LLVM_rev)):
             build_LLVM("trunk", need_LLVM_rev[i], "", "", False, False, False, True, False, make)
         LLVM += LLVM_revisions
-        print "DEBUG:"
-        print LLVM
+        print "LLVM versions:", LLVM
+ 
 # begin validation run for stabitily
         common.remove_if_exists(stability.in_file)
         R = [[[],[]],[[],[]],[[],[]],[[],[]]]
@@ -671,8 +678,7 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
             attach_mail_file(msg, "." + os.sep + "logs" + os.sep + "perf_build.log", "perf_build.log")
 
 # sending e-mail with results
-    #print common.ex_state
-    common.ex_state.dump("test_table.dump", common.ex_state.tt)
+    common.ex_state.dump("test_table_runtime.dump", common.ex_state.tt)
     if options.notify != "":
         fp = open(os.environ["ISPC_HOME"] + os.sep + "notify_log.log", 'rb')
         f_lines = fp.readlines()
@@ -735,48 +741,68 @@ def rnumber_from_name(revision_name):
     
 
 class RegressionTest(object):
-    def __init__(self, revnum_left, revnum_rght):
+    def __init__(self, revnum_left, revnum_rght, archs, opts, targets):
         midl_revision = (revnum_rght + revnum_left) / 2
 
         print_debug("Regression test started with revisions (R%d, R%d)\n" % (revnum_left, revnum_rght), False, stability_log)
         self.REVISIONS_DB = common.ex_state.tt.table.keys() # revisions tested by this time
 
-        targets = ['sse4-i32x4']
-        opts    = ['-O0']
-        archs   = ['x86']
 
         # load ESG from backup (if it exists)
         old_tt = common.ex_state.undump("test_table.dump")
         common.ex_state.load_from_tt(old_tt)
-        self.REVISIONS_DB = common.ex_state.tt.table.keys()
 
-        self.test_between(revnum_left, revnum_rght, archs, opts, targets)
-
-    def test_between(self, revnum_left, revnum_rght, archs, opts, targets):
-        revnum_midl = (revnum_rght + revnum_left) / 2
         self.refresh_esg(revnum_left, archs, opts, targets)
         self.refresh_esg(revnum_rght, archs, opts, targets)
-        self.refresh_esg(revnum_midl, archs, opts, targets)
+        regr_to_find = common.ex_state.tt.regression(revnum_left, revnum_rght)
 
+        self.test_between(revnum_left, revnum_rght, regr_to_find)
+
+    def test_between(self, revnum_left, revnum_rght, regr_to_find):
+        revnum_midl = (revnum_rght + revnum_left) / 2
+
+        archs = regr_to_find.archs
+        opts = regr_to_find.opts
+        targets = regr_to_find.targets
+
+        if len(archs) == 0 or len(opts) == 0 or len(targets) == 0:
+            print_debug("No regressions found between %d and %d: (%s %s %s)\n" % (revnum_left, revnum_rght, str(archs), str(opts), str(targets)), False, stability_log)
+            return
+
+        self.refresh_esg(revnum_midl, archs, opts, targets)
+            
         regr_old_mid = common.ex_state.tt.regression(revnum_left, revnum_midl)
         regr_mid_new = common.ex_state.tt.regression(revnum_midl, revnum_rght)
 
+
+        print regr_to_find
+        print "\n---------------------------\n"
         print regr_old_mid
         print "\n---------------------------\n"
         print regr_mid_new
 
     def refresh_esg(self, revnum, archs, opts, targets):
         # do validation run in case the data is not in a table
-        only = 'R' + str(revnum) + ' ' + ' '.join(opts) + ' ' + ' '.join(archs) + ' stability'
-        only_targets = ' '.join(targets)
         self.REVISIONS_DB = common.ex_state.tt.table.keys()
         if not str(revnum) in self.REVISIONS_DB:
+            only = 'R' + str(revnum) + ' ' + ' '.join(opts) + ' ' + ' '.join(archs) + ' stability'
+            only_targets = ' '.join(targets)
             print_debug("LLVM revision %d is not found in a 'tt'. Downloading and testing...\n" % (revnum), False, stability_log)
             print_debug("Doing alloy.py -r --only='" + only + "' --only-targets = '" + only_targets + "' -j" + str(options.speed) + 
                                                                  " options.time = '" + str(options.time) + "'\n", False, stability_log)
-            validation_run(only, only_targets, '', 0, '', '', int(options.speed), 'make -j' + str(options.speed), False, options.time)
+            try:
+                validation_run(only, only_targets, '', 0, '', '', int(options.speed), 'make -j' + str(options.speed), False, options.time)
+            
+            except RuntimeError, e:
+                if "try_do_LLVM" not in e.message:
+                    raise
+                print_debug("LLVM revision %d seems to be broken!\n" % (revnum), False, stability_log)
+                raise
         else:
-            pass # TODO: check here that we have all targets/opts/archs in table
+            pass # TODO: check here that we have all targets/opts/archs in the table
+
+        # save data in the table for the future
+        common.ex_state.dump("test_table.dump", common.ex_state.tt)
 
 def Main():
     global current_OS
@@ -861,7 +887,12 @@ def Main():
                         (rnumber_from_name(options.start_rev), rnumber_from_name(options.end_rev)))
 
             # this class does all job here
-            rt = RegressionTest(rnumber_from_name(options.start_rev), rnumber_from_name(options.end_rev))
+
+            targets = ['sse4-i32x4']
+            opts    = ['-O0']
+            archs   = ['x86-64']
+            
+            rt = RegressionTest(rnumber_from_name(options.start_rev), rnumber_from_name(options.end_rev), archs, opts, targets)
 
 
         elapsed_time = time.time() - start_time

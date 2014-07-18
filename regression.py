@@ -129,6 +129,9 @@ class RegressionInfo(object):
         self.optfails = {}
         self.targetfails = {}
         self.testfails = {}
+        self.archs = []
+        self.opts = []
+        self.targets = []
 
         for test in tests:
             for test_case in test.test_cases:
@@ -136,6 +139,10 @@ class RegressionInfo(object):
                 self.inc_dictionary(self.archfailes, test_case.arch)
                 self.inc_dictionary(self.optfails, test_case.opt)
                 self.inc_dictionary(self.targetfails, test_case.target)
+        
+        self.archs = self.archfailes.keys()
+        self.opts = self.optfails.keys()
+        self.targets = self.targetfails.keys()
 
     def inc_dictionary(self, dictionary, key):
         if key not in dictionary:
@@ -160,6 +167,7 @@ class TestTable(object):
         self.table = {}
 
     def add_result(self, revision_name, test_name, arch, opt, target, runfailed, compfailed):
+        revision_name = str(revision_name)
         if revision_name not in self.table:
             self.table[revision_name] = []
         
@@ -197,13 +205,14 @@ class TestTable(object):
         return regressed
 
     def regression(self, revision_old, revision_new):
+        revision_old, revision_new = (str(revision_old), str(revision_new))
         ''' Return a tuple of Test() objects containing TestCase() object which show regression along given revisions '''
         if revision_new not in self.table:
-            raise RuntimeError("This revision in not in the database: " + revision_new + " (" + str(self.table.keys()) + ")")
+            raise RuntimeError("This revision in not in the database: " + str(revision_new) + " (" + str(self.table.keys()) + ")")
             return
 
         if revision_old not in self.table:
-            raise RuntimeError("This revision in not in the database: " + revision_old + " (" + str(self.table.keys()) + ")")
+            raise RuntimeError("This revision in not in the database: " + str(revision_old) + " (" + str(self.table.keys()) + ")")
             return
 
         regressed = []

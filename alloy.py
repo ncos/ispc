@@ -330,8 +330,7 @@ def build_ispc(version_LLVM, make):
             folder += version_LLVM
         if options.debug == True:
             folder +=  "dbg"
-        
-        print_debug("...Folder is:  " + folder + "\n", False, alloy_build)
+
         p = subprocess.Popen("svn info " + folder, shell=True, \
                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (info_llvm, err) = p.communicate()
@@ -445,9 +444,6 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
         LLVM_revisions = []
         targets = []
         sde_targets = []
-# sometimes clang++ is not avaluable. if --ispc-build-compiler = gcc we will pass in g++ compiler
-        if options.ispc_build_compiler == "gcc":
-            stability.compiler_exe = "g++"
 # parsing option only, update parameters of run
         if "-O2" in only:
             opts.append(False)
@@ -533,6 +529,7 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
 # begin validation run for stabitily
         common.remove_if_exists(stability.in_file)
         R = [[[],[]],[[],[]],[[],[]],[[],[]]]
+        print_debug("\n" + common.get_host_name() + "\n", False, stability_log)
         print_debug("\n_________________________STABILITY REPORT_________________________\n", False, stability_log)
         for i in range(0,len(LLVM)):
             print_version = 2
@@ -551,6 +548,14 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
             for j in range(0,len(targets)):
                 stability.target = targets[j]
                 stability.wrapexe = ""
+                # choosing right compiler for a given target
+                # sometimes clang++ is not avaluable. if --ispc-build-compiler = gcc we will pass in g++ compiler
+                if options.ispc_build_compiler == "gcc":
+                    stability.compiler_exe = "g++"
+                # but 'knc' target is supported only by icpc, so set explicitly
+                if "knc" in targets[j]:
+                    stability.compiler_exe = "icpc"
+                # now set archs for targets
                 if "generic" in targets[j]:
                     arch = gen_archs
                 elif "knc" in targets[j]:
@@ -676,7 +681,8 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
         if options.notify != "":
             attach_mail_file(msg, performance.in_file, "performance.log")
             attach_mail_file(msg, "." + os.sep + "logs" + os.sep + "perf_build.log", "perf_build.log")
-
+# dumping gathered info to the file
+    common.ex_state.dump(alloy_folder + "test_table.dump", common.ex_state.tt)
 # sending e-mail with results
     common.ex_state.dump("test_table_runtime.dump", common.ex_state.tt)
     if options.notify != "":
@@ -684,6 +690,8 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
         f_lines = fp.readlines()
         fp.close()
         body = ""
+        body += "Hostname: " + common.get_host_name() + "\n\n"
+
         if  not sys.exc_info()[0] == None:
             body = body + "Last exception: " + str(sys.exc_info()) + '\n'
         for i in range(0,len(f_lines)):
@@ -853,10 +861,12 @@ def Main():
     f_date = "logs"
     common.remove_if_exists(f_date)
     os.makedirs(f_date)
+    global alloy_folder
+    alloy_folder = os.getcwd() + os.sep + f_date + os.sep
     global alloy_build
-    alloy_build = os.getcwd() + os.sep + f_date + os.sep + "alloy_build.log"
+    alloy_build = alloy_folder + "alloy_build.log"
     global stability_log
-    stability_log = os.getcwd() + os.sep + f_date + os.sep + "stability.log"
+    stability_log = alloy_folder + "stability.log"
     current_path = os.getcwd()
     make = "make -j" + options.speed
     if os.environ["ISPC_HOME"] != os.getcwd():
@@ -923,7 +933,6 @@ import copy
 import multiprocessing
 import subprocess
 import re
-import collections
 from email.MIMEMultipart import MIMEMultipart
 from email.MIMEBase import MIMEBase
 from email.mime.text import MIMEText

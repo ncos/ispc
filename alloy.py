@@ -691,7 +691,7 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
             attach_mail_file(msg, performance.in_file, "performance.log")
             attach_mail_file(msg, "." + os.sep + "logs" + os.sep + "perf_build.log", "perf_build.log")
 # dumping gathered info to the file
-    common.ex_state.dump(alloy_folder + "test_table.dump", common.ex_state.tt)
+    common.ex_state.dump(alloy_folder + "tt.dump", common.ex_state.tt)
 # sending e-mail with results
     if options.notify != "":
         fp = open(os.environ["ISPC_HOME"] + os.sep + "notify_log.log", 'rb')
@@ -743,51 +743,90 @@ class RegressionTest(object):
         self.test_between(revnum_left, revnum_rght, regr_to_find)
 
     def test_between(self, revnum_left, revnum_rght, regr_to_find):
-        revnum_midl = (revnum_rght + revnum_left) / 2
+        print "Testing between %d and %d:" % (revnum_left, revnum_rght)
+        tried_midl = (revnum_rght + revnum_left) / 2
+        revnum_midl = common.get_real_revision(tried_midl)
+
+        while (revnum_midl == revnum_left):
+            tried_midl += 1
+            if tried_midl == revnum_rght:
+                print_debug("Regression is between %d | %d: \n%s \n%s \n%s\n" % (revnum_left, revnum_rght, str(archs), str(opts), str(targets)), False, stability_log)
+                return
+            revnum_midl = common.get_real_revision(tried_midl)
+        print "separating on %d(%d)" %(revnum_midl, (revnum_rght + revnum_left) / 2)
 
         archs = regr_to_find.archs
         opts = regr_to_find.opts
         targets = regr_to_find.targets
 
         if len(archs) == 0 or len(opts) == 0 or len(targets) == 0:
-            print_debug("No regressions found between %d and %d: (%s %s %s)\n" % (revnum_left, revnum_rght, str(archs), str(opts), str(targets)), False, stability_log)
+            print_debug("No regressions found between %d and %d: \n%s \n%s \n%s\n" % (revnum_left, revnum_rght, str(archs), str(opts), str(targets)), False, stability_log)
             return
 
         self.refresh_esg(revnum_midl, archs, opts, targets)
         if revnum_midl in self.broken:
-            print_debug("Broken revisions: " + str(self.broken) "\n"), False, stability_log)
+            print_debug("Broken revisions: " + str(self.broken) + "\n", False, stability_log)
             exit(0)
 
         regr_old_mid = common.ex_state.tt.regression(revnum_left, revnum_midl)
         regr_mid_new = common.ex_state.tt.regression(revnum_midl, revnum_rght)
         
+        left_tests = []
+        rght_tests = []
+        for test in regr_to_find.tests:
+            if test in regr_old_mid.tests:
+                left_tests.append(test)
+            if test in regr_mid_new.tests:
+                rght_tests.append(test)
+        print
+        print "lt", left_tests
+        print "rt", rght_tests
 
-        print regr_to_find
-        print "\n---------------------------\n"
-        print regr_old_mid
-        print "\n---------------------------\n"
-        print regr_mid_new
+        regr_to_find_left = common.RegressionInfo(revnum_left, revnum_midl, left_tests)
+        regr_to_find_rght = common.RegressionInfo(revnum_midl, revnum_rght, rght_tests)
+
+        self.test_between(revnum_left, revnum_midl, regr_to_find_left)
+        self.test_between(revnum_midl, revnum_rght, regr_to_find_rght)
+
 
     def refresh_esg(self, revnum, archs, opts, targets):
         # do validation run in case the data is not in a table
         self.REVISIONS_DB = common.ex_state.tt.table.keys()
+
+        need_opts = opts
+        need_archs = archs
+        need_targets = targets
         if not str(revnum) in self.REVISIONS_DB:
-            only = 'R' + str(revnum) + ' ' + ' '.join(opts) + ' ' + ' '.join(archs) + ' stability'
-            only_targets = ' '.join(targets)
             print_debug("LLVM revision %d is not found in a 'tt'. Downloading and testing...\n" % (revnum), False, stability_log)
-            print_debug("Doing alloy.py -r --only='" + only + "' --only-targets = '" + only_targets + "' -j" + str(options.speed) + 
-                                                                 " options.time = '" + str(options.time) + "'\n", False, stability_log)
-            try:
-                validation_run(only, only_targets, '', 0, '', '', int(options.speed), 'make -j' + str(options.speed), False, options.time)
-            
-            except RuntimeError, e:
-                if "try_do_LLVM" not in e.message:
-                    raise
-                print_debug("LLVM revision %d seems to be broken!\n" % (revnum), False, stability_log)
-                self.broken.append(revnum)
-                raise
         else:
-            pass # TODO: check here that we have all targets/opts/archs in the table
+            (t_archs, t_opts, t_targets) = common.ex_state.get_rev_info(str(revnum)) # already in the table
+            if set(archs) <= set(t_archs) and \
+               set(opts) <= set(t_opts) and \
+               set(targets) <= set(t_targets):
+                need_opts = []
+                need_archs = []
+                need_targets = []
+        
+        if len(need_opts) == 0 or \
+           len(need_archs) == 0 or \
+           len(need_targets) == 0:
+            print_debug("LLVM revision %d is already in table\n" % (revnum), False, stability_log)
+            return
+        
+        only = 'R' + str(revnum) + ' ' + ' '.join(need_opts) + ' ' + ' '.join(need_archs) + ' stability'
+        only_targets = ' '.join(need_targets)
+
+        print_debug("Doing alloy.py -r --only='" + only + "' --only-targets = '" + only_targets + "' -j" + str(options.speed) + 
+                                                                 " options.time = '" + str(options.time) + "'\n", False, stability_log)
+        try:
+            validation_run(only, only_targets, '', 0, '', '', int(options.speed), 'make -j' + str(options.speed), False, options.time)
+            
+        except RuntimeError, e:
+            if "try_do_LLVM" not in e.message:
+                raise
+            print_debug("LLVM revision %d seems to be broken!\n" % (revnum), False, stability_log)
+            self.broken.append(revnum)
+            return
 
         # save data in the table for the future
         common.ex_state.dump("regression.dump", common.ex_state.tt)
@@ -870,7 +909,7 @@ def Main():
             # this class does all job here
 
             targets = ['sse4-i32x4']
-            opts    = ['-O0']
+            opts    = ['-O2']
             archs   = ['x86-64']
             left_rev = get_rev_by_name(options.start_rev)
             rght_rev = get_rev_by_name(options.end_rev)

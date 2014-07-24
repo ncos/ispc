@@ -92,14 +92,15 @@ if __name__ == '__main__':
         parser.print_help()
         exit(0)
     
-    tt = read_test_table(options.load_tt)
-    print "Available LLVM revisions:", tt.table.keys()
+    _tt = read_test_table(options.load_tt)
+    ex_state.load_from_tt(_tt)
+    print ex_state
 
     if options.revision != None:
-        check_rev_in_tt(tt, options.revision, options.load_tt)
+        check_rev_in_tt(ex_state.tt, options.revision, options.load_tt)
         revisions = [options.revision]
     else:
-        revisions = tt.table.keys()
+        revisions = ex_state.tt.table.keys()
 
 
     # print test cases
@@ -107,19 +108,19 @@ if __name__ == '__main__':
         print "\n\n Succeed:"
         for rev in revisions:
             print "Revision %s" % (rev)
-            print_with_specific_results(tt.table[rev], 0, 0)
+            print_with_specific_results(ex_state.tt.table[rev], 0, 0)
 
     if (options.runfailed):
         print "\n\n Runfailed:"
         for rev in revisions:
             print "Revision %s" % (rev)
-            print_with_specific_results(tt.table[rev], 1, 0)
+            print_with_specific_results(ex_state.tt.table[rev], 1, 0)
 
     if (options.compfailed):
         print "\n\n Compfailed:"
         for rev in revisions:
             print "Revision %s" % (rev)
-            print_with_specific_results(tt.table[rev], 0, 1)
+            print_with_specific_results(ex_state.tt.table[rev], 0, 1)
             
      
     # print regression
@@ -129,9 +130,9 @@ if __name__ == '__main__':
             print "Invalid input:", regr_revs
             exit(0)
 
-        check_rev_in_tt(tt, regr_revs[0], options.load_tt)
-        check_rev_in_tt(tt, regr_revs[1], options.load_tt)
+        check_rev_in_tt(ex_state.tt, regr_revs[0], options.load_tt)
+        check_rev_in_tt(ex_state.tt, regr_revs[1], options.load_tt)
 
-        print tt.regression(regr_revs[0], regr_revs[1])
+        print ex_state.tt.regression(regr_revs[0], regr_revs[1])
 
 

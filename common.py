@@ -272,7 +272,6 @@ class Test(object):
 
     def add_result(self, test_case):
         if test_case in self.test_cases:
-            raise RuntimeError("This test case is already in the list: " + repr(test_case))
             return
         self.test_cases.append(test_case)
 
@@ -308,7 +307,7 @@ class RegressionInfo(object):
     def __init__(self, revision_old, revision_new, tests):
         self.revision_old, self.revision_new = (revision_old, revision_new)
         self.tests = tests
-        self.archfailes = {}
+        self.archfails = {}
         self.optfails = {}
         self.targetfails = {}
         self.testfails = {}
@@ -319,11 +318,11 @@ class RegressionInfo(object):
         for test in tests:
             for test_case in test.test_cases:
                 self.inc_dictionary(self.testfails, test.name)
-                self.inc_dictionary(self.archfailes, test_case.arch)
+                self.inc_dictionary(self.archfails, test_case.arch)
                 self.inc_dictionary(self.optfails, test_case.opt)
                 self.inc_dictionary(self.targetfails, test_case.target)
         
-        self.archs = self.archfailes.keys()
+        self.archs = self.archfails.keys()
         self.opts = self.optfails.keys()
         self.targets = self.targetfails.keys()
 
@@ -336,7 +335,7 @@ class RegressionInfo(object):
         string = "Regression of LLVM revision %s in comparison to %s\n" % (self.revision_new, self.revision_old)
         string += repr(self.tests) + '\n'
         string += str(self.testfails) + '\n'
-        string += str(self.archfailes) + '\n'
+        string += str(self.archfails) + '\n'
         string += str(self.optfails) + '\n'
         string += str(self.targetfails) + '\n'
 
@@ -422,93 +421,31 @@ class TestTable(object):
         return string
 
 
-class RevisionInfo(object):
-    """
-    this class is intended to store some relevant information about curent LLVM revision
-    """
-    def __init__(self, hostname, revision):
-        self.hostname, self.revision = hostname, revision
-        self.archs = []
-        self.opts = []
-        self.targets = []
-        self.succeed = 0
-        self.runfailed = 0
-        self.compfailed = 0
-        self.skipped = 0
-        self.testall = 0
-        self.regressions = {}
-    
-    def register_test(self, arch, opt, target, succeed, runfailed, compfailed, skipped):
-        if arch not in self.archs:
-            self.archs.append(arch)
-        if opt not in self.opts:
-            self.opts.append(opt)
-        if target not in self.targets:
-            self.targets.append(target)
-        self.runfailed += runfailed
-        self.compfailed += compfailed
-        self.skipped += skipped
-        self.succeed += succeed
-
-    def add_regression(self, revision, regression_info):
-        """ input is intended to be from 'TestTable.regression(..)', 'regression_info' is a tuple of RegressionInfo() object
-        (regression.py) and 'revision' is tested (not current) LLVM revision name """
-        if revision == self.revision:
-            raise RuntimeError("No regression can be found along the same LLVM revision!")
-      
-        if revision in self.regressions:
-            raise RuntimeError("This revision regression info is already in self.regressions!")
-      
-        self.regressions[revision] = regression_info
-
-    def __repr__(self):
-        string = "%s: LLVM(%s)\n" % (self.hostname, self.revision)
-        string += "archs  : %s\n" % (str(self.archs))
-        string += "opts   : %s\n" % (str(self.opts))
-        string += "targets: %s\n" % (str(self.targets))
-        string += "runfails: %d/%d\n" % (self.runfailed, self.testall)
-        string += "compfails: %d/%d\n" % (self.compfailed, self.testall)
-        string += "skipped: %d/%d\n" % (self.skipped, self.testall)
-        string += "succeed: %d/%d\n" % (self.succeed, self.testall)
-        return string
-
-
 class ExecutionStateGatherer(object):
     def __init__(self):
         self.hostname = self.get_host_name()
         self.revision = ""
-        self.rinf = []
         self.tt = TestTable()
-        self.switch_revision("undefined")
 
     def switch_revision(self, revision):
-        self.revision = revision
-        self.rinf.append(RevisionInfo(self.hostname, self.revision))
-
-    def current_rinf(self):
-        if len(self.rinf) == 0:
-            raise RuntimeError("self.rinf is empty. Apparently you've never invoked switch_revision")
-        return self.rinf[len(self.rinf) - 1]
+        print "Switching revision to " + str(revision)
+        self.revision = str(revision)
 
     def add_to_tt(self, test_name, arch, opt, target, runfailed, compfailed):
-        if len(self.rinf) == 0:
-            raise RuntimeError("self.rinf is empty. Apparently you've never invoked switch_revision")
         self.tt.add_result(self.revision, test_name, arch, opt, target, runfailed, compfailed)
 
-    def add_to_rinf(self, arch, opt, target, succeed, runfailed, compfailed, skipped):
-        self.current_rinf().register_test(arch, opt, target, succeed, runfailed, compfailed, skipped)
-
-    def add_to_rinf_testall(self, tried_to_test):
-        self.current_rinf().testall += tried_to_test
-
     def load_from_tt(self, tt):
-        # TODO: fill in self.rinf field!
         self.tt = tt
-        REVISIONS = tt.table.keys()
         self.revision = ""
-        if len(REVISIONS) != 0:
-            self.revision = REVISIONS[0]
-        print "ESG: loaded from 'TestTable()' with revisions", REVISIONS
+        if len(self.tt.table.keys()) != 0:
+            self.revision = self.tt.table.keys()[0]
+        print "loaded from 'TestTable()' with revisions", self.tt.table.keys()
+
+    def get_rev_info(self, rev):
+        if rev not in self.tt.table:
+            return ([], [], [])
+        ri = RegressionInfo(-1, -1, self.tt.table[rev])
+        return (ri.archs, ri.opts, ri.targets)
 
     def dump(self, fname, obj):
         import pickle
@@ -527,9 +464,8 @@ class ExecutionStateGatherer(object):
 
     def __repr__(self):
         string = "Hostname: %s\n" % (self.hostname)
-        string += "Current LLVM Revision = %s\n\n" % (self.revision)
-        for rev_info in self.rinf:
-            string += repr(rev_info) + '\n'
+        string += "Current LLVM Revision = %s\n" % (self.revision)
+        string += "Revisions in table: " + str(self.tt.table.keys())
         return string
 
 

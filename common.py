@@ -32,16 +32,48 @@
 #   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # // Author: Filippov Ilia, Anton Mitrokhin, Vsevolod Livinskiy
-import sys
-import os
+import os, sys
+import subprocess
 import errno
-import shutil
+import shutil, re
 
 
 # retrieve the host name
 def get_host_name():
     import socket
     return socket.gethostname()
+
+
+# return tre 'real' (that is the last appeared in svn log) revision number 
+# 'path' is the path to the local svn repo
+def svn_version(path):
+    p = subprocess.Popen('svn info ' + path, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (svninfo, err) = p.communicate()
+    if len(err) != 0: # In case of a failure 
+        raise IOError(err)
+
+    info_llvm = [re.split(': ', line) for line in re.split('\n', svninfo)]
+    
+    for entry in info_llvm:
+        if entry[0] == 'Last Changed Rev':
+            return int(entry[1])
+
+
+# get the 'real' (that is the last appeared in svn log) revision number of llvm trunk revision
+# the 'revision' is an svn revision number
+def get_real_revision(revision):
+    svn_path = 'http://llvm.org/svn/llvm-project/llvm/trunk'
+    p = subprocess.Popen('svn info -r' + str(revision) + ' ' + svn_path, shell=True, 
+                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (svninfo, err) = p.communicate()
+    if len(err) != 0: # In case of a failure 
+        raise IOError(err)
+
+    info_llvm = [re.split(': ', line) for line in re.split('\n', svninfo)]
+    
+    for entry in info_llvm:
+        if entry[0] == 'Last Changed Rev':
+            return int(entry[1])
 
 
 # load/save almost every object to a file (good for bug reproducing)

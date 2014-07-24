@@ -331,13 +331,8 @@ def build_ispc(version_LLVM, make):
         if options.debug == True:
             folder +=  "dbg"
 
-        p = subprocess.Popen("svn info " + folder, shell=True, \
-               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (info_llvm, err) = p.communicate()
-        info_llvm = re.split('\n', info_llvm)
-        for i in info_llvm:
-            if len(i) > 0 and i.startswith("Last Changed Rev: "):
-                common.ex_state.switch_revision(str(i[len("Last Changed Rev: "):]))
+        rev_num = common.svn_version(folder)
+        common.ex_state.switch_revision(str(rev_num))
         
         try_do_LLVM("recognize LLVM revision", "svn info " + folder, True)
         try_do_LLVM("build ISPC with LLVM version " + version_LLVM + " ", make_ispc, True)
@@ -397,6 +392,20 @@ def run_special_tests():
 
 class options_for_drivers:
     pass
+
+
+def get_rev_by_name(revision_name):
+    rev_pattern = re.compile("^[R]([0-9]+)$")
+    if len(revision_name) == 0:
+        raise RuntimeError("Invalid revision name: " + revision_name)
+
+    if rev_pattern.match(revision_name) == None:
+        raise RuntimeError("Invalid revision name: " + revision_name)
+    
+    return int(revision_name[1:])
+                
+
+
 
 def validation_run(only, only_targets, reference_branch, number, notify, update, speed_number, make, perf_llvm, time):
     os.chdir(os.environ["ISPC_HOME"])
@@ -684,7 +693,6 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
 # dumping gathered info to the file
     common.ex_state.dump(alloy_folder + "test_table.dump", common.ex_state.tt)
 # sending e-mail with results
-    common.ex_state.dump("test_table_runtime.dump", common.ex_state.tt)
     if options.notify != "":
         fp = open(os.environ["ISPC_HOME"] + os.sep + "notify_log.log", 'rb')
         f_lines = fp.readlines()
@@ -713,51 +721,19 @@ def send_mail(body, msg):
 
 
 
-def check_rev_input(revision_name):
-    shortcuts = ["3.1", "3.2", "3.3", "3.4", "trunk"]
-    rev_pattern = re.compile("^[R]([0-9]+)$")
 
-    if len(revision_name) == 0:
-        return False
-
-    if revision_name in shortcuts:
-        return True
-
-    if rev_pattern.match(revision_name) != None:
-        return True
-
-    return False
-
-
-def rnumber_from_name(revision_name):
-    # TODO: here we would possibly like to return shortcuts translated to actual revision numbers 
-    if not check_rev_input(revision_name):
-        return False
-
-    rev_pattern = re.compile("^[R]([0-9]+)$")
-    if rev_pattern.match(revision_name) != None:
-        return int(revision_name[1:])
-
-    # FIXME: revision numbers should be updated on every launch
-    if revision_name == "trunk":
-        return 213190
-
-    if revision_name == "3.4":
-        return 210929
-
-    return False
-    
 
 class RegressionTest(object):
-    def __init__(self, revnum_left, revnum_rght, archs, opts, targets):
-        midl_revision = (revnum_rght + revnum_left) / 2
+    def __init__(self, r_left, r_rght, archs, opts, targets):
+        self.broken = []
+        revnum_left = common.get_real_revision(r_left)
+        revnum_rght = common.get_real_revision(r_rght)
 
-        print_debug("Regression test started with revisions (R%d, R%d)\n" % (revnum_left, revnum_rght), False, stability_log)
+        print_debug("Regression test started with revisions %d and %d (using real LLVM revisions)\n" % (revnum_left, revnum_rght), False, stability_log)
         self.REVISIONS_DB = common.ex_state.tt.table.keys() # revisions tested by this time
 
-
         # load ESG from backup (if it exists)
-        old_tt = common.ex_state.undump("test_table.dump")
+        old_tt = common.ex_state.undump("regression.dump")
         common.ex_state.load_from_tt(old_tt)
 
         self.refresh_esg(revnum_left, archs, opts, targets)
@@ -778,10 +754,13 @@ class RegressionTest(object):
             return
 
         self.refresh_esg(revnum_midl, archs, opts, targets)
-            
+        if revnum_midl in self.broken:
+            print_debug("Broken revisions: " + str(self.broken) "\n"), False, stability_log)
+            exit(0)
+
         regr_old_mid = common.ex_state.tt.regression(revnum_left, revnum_midl)
         regr_mid_new = common.ex_state.tt.regression(revnum_midl, revnum_rght)
-
+        
 
         print regr_to_find
         print "\n---------------------------\n"
@@ -805,12 +784,15 @@ class RegressionTest(object):
                 if "try_do_LLVM" not in e.message:
                     raise
                 print_debug("LLVM revision %d seems to be broken!\n" % (revnum), False, stability_log)
+                self.broken.append(revnum)
                 raise
         else:
             pass # TODO: check here that we have all targets/opts/archs in the table
 
         # save data in the table for the future
-        common.ex_state.dump("test_table.dump", common.ex_state.tt)
+        common.ex_state.dump("regression.dump", common.ex_state.tt)
+
+
 
 def Main():
     global current_OS
@@ -849,11 +831,11 @@ def Main():
         for iterator in test_only:
             if iterator[0] != "R":
                 if not (" " + iterator + " " in test_only_r):
-                    error("unknow option for only: " + iterator, 1)
+                    error("unknown option for only: " + iterator, 1)
             else:
                 rev_pattern = re.compile("^[R]([0-9]+)$")
                 if rev_pattern.match(iterator) == None:
-                    error("unknow option for only: " + iterator, 1)
+                    error("unknown option for only: " + iterator, 1)
     if current_OS == "Windows":
         if options.debug == True or options.selfbuild == True or options.tarball != "":
             error("Debug, selfbuild and tarball options are unsupported on windows", 1)
@@ -884,25 +866,17 @@ def Main():
                     options.number_for_performance, options.notify, options.update, int(options.speed),
                     make, options.perf_llvm, options.time)
         if options.regression_test:
-            # TODO: lets translate standard revision names to revision numbers!
-            # check arguments here:
-            if not check_rev_input(options.start_rev):
-                raise RuntimeError("Invalid revision name: " + options.start_rev)
-
-            if not check_rev_input(options.end_rev):
-                raise RuntimeError("Invalid revision name: " + options.end_rev)
-
-            if not rnumber_from_name(options.start_rev) < rnumber_from_name(options.end_rev):
-                raise RuntimeError("First rev. number(%d) should be smaller than the second one(%d)!" %
-                        (rnumber_from_name(options.start_rev), rnumber_from_name(options.end_rev)))
-
+            # TODO: lets translate standard revision names to revision numbers! ('3.4' -> R123456)
             # this class does all job here
 
             targets = ['sse4-i32x4']
             opts    = ['-O0']
             archs   = ['x86-64']
-            
-            rt = RegressionTest(rnumber_from_name(options.start_rev), rnumber_from_name(options.end_rev), archs, opts, targets)
+            left_rev = get_rev_by_name(options.start_rev)
+            rght_rev = get_rev_by_name(options.end_rev)
+
+            print_debug("Regression input is: (R%d, R%d)\n" % (left_rev, rght_rev), False, stability_log)
+            rt = RegressionTest(left_rev, rght_rev, archs, opts, targets)
 
 
         elapsed_time = time.time() - start_time
@@ -919,8 +893,7 @@ def Main():
 ###Main###
 from optparse import OptionParser
 from optparse import OptionGroup
-import sys
-import os
+import os, sys
 import errno
 import operator
 import time
@@ -1025,9 +998,9 @@ if __name__ == '__main__':
     regr_group = OptionGroup(parser, "Options for regression search",
                     "These options should be used with -s --regression-test options.")
     regr_group.add_option('--start-rev', dest='start_rev',
-        help='start revision for search', default="3.4")
+        help='start revision for search', default="")
     regr_group.add_option('--end-rev', dest='end_rev',
-        help='end revision for search', default="trunk")
+        help='end revision for search', default="")
     parser.add_option_group(regr_group)
     # options for activity "setup PATHS"
     setup_group = OptionGroup(parser, "Options for setup",

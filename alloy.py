@@ -746,6 +746,14 @@ class RegressionTest(object):
         print "Testing between %d and %d:" % (revnum_left, revnum_rght)
         tried_midl = (revnum_rght + revnum_left) / 2
         revnum_midl = common.get_real_revision(tried_midl)
+        
+        archs = regr_to_find.archs
+        opts = regr_to_find.opts
+        targets = regr_to_find.targets
+        
+        if len(archs) == 0 or len(opts) == 0 or len(targets) == 0:
+            print_debug("No regressions found between %d and %d: \n%s \n%s \n%s\n" % (revnum_left, revnum_rght, str(archs), str(opts), str(targets)), False, stability_log)
+            return
 
         while (revnum_midl == revnum_left):
             tried_midl += 1
@@ -754,14 +762,6 @@ class RegressionTest(object):
                 return
             revnum_midl = common.get_real_revision(tried_midl)
         print "separating on %d(%d)" %(revnum_midl, (revnum_rght + revnum_left) / 2)
-
-        archs = regr_to_find.archs
-        opts = regr_to_find.opts
-        targets = regr_to_find.targets
-
-        if len(archs) == 0 or len(opts) == 0 or len(targets) == 0:
-            print_debug("No regressions found between %d and %d: \n%s \n%s \n%s\n" % (revnum_left, revnum_rght, str(archs), str(opts), str(targets)), False, stability_log)
-            return
 
         self.refresh_esg(revnum_midl, archs, opts, targets)
         if revnum_midl in self.broken:

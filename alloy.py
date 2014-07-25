@@ -732,20 +732,27 @@ class RegressionTest(object):
         self.REVISIONS_DB = common.ex_state.tt.table.keys() # revisions tested by this time
 
         # load ESG from backup (if it exists)
-        old_tt = common.ex_state.undump("regression.dump")
-        common.ex_state.load_from_tt(old_tt)
+        try:
+            old_tt = common.ex_state.undump("regression.dump")
+            common.ex_state.load_from_tt(old_tt)
+        except:
+            print_debug ("Unable to load data from 'regression.dump'. Continuing without...\n", False, stability_log)
 
-        self.refresh_esg(revnum_left, archs, opts, targets)
-        self.refresh_esg(revnum_rght, archs, opts, targets)
+        if not self.refresh_esg(revnum_left, archs, opts, targets):
+            return
+
+        if not self.refresh_esg(revnum_rght, archs, opts, targets):
+            return
+
         regr_to_find = common.ex_state.tt.regression(revnum_left, revnum_rght)
-
         self.test_between(revnum_left, revnum_rght, regr_to_find)
 
     def test_between(self, revnum_left, revnum_rght, regr_to_find):
-        print "Testing between %d and %d:" % (revnum_left, revnum_rght)
+        print_debug("Testing between %d and %d:" % (revnum_left, revnum_rght), False, stability_log)
         tried_midl = (revnum_rght + revnum_left) / 2
         revnum_midl = common.get_real_revision(tried_midl)
         
+        # list of archs/opts/targets to test to find regression 
         archs = regr_to_find.archs
         opts = regr_to_find.opts
         targets = regr_to_find.targets
@@ -754,18 +761,23 @@ class RegressionTest(object):
             print_debug("No regressions found between %d and %d: \n%s \n%s \n%s\n" % (revnum_left, revnum_rght, str(archs), str(opts), str(targets)), False, stability_log)
             return
 
-        while (revnum_midl == revnum_left):
+        while (revnum_midl == revnum_left): # handle fake revisions
             tried_midl += 1
             if tried_midl == revnum_rght:
-                print_debug("Regression is between %d | %d: \n%s \n%s \n%s\n" % (revnum_left, revnum_rght, str(archs), str(opts), str(targets)), False, stability_log)
+                print_debug("Finished. Regression is between %d | %d: \n%s \n%s \n%s\n" % (revnum_left, revnum_rght, str(archs), str(opts), str(targets)), False, stability_log)
                 return
             revnum_midl = common.get_real_revision(tried_midl)
-        print "separating on %d(%d)" %(revnum_midl, (revnum_rght + revnum_left) / 2)
+        print_debug("separating on %d(%d)" %(revnum_midl, tried_midl), False, stability_log)
+        tried_midl = revnum_midl
 
-        self.refresh_esg(revnum_midl, archs, opts, targets)
-        if revnum_midl in self.broken:
-            print_debug("Broken revisions: " + str(self.broken) + "\n", False, stability_log)
-            exit(0)
+        while not self.refresh_esg(revnum_midl, archs, opts, targets): # handle broken builds
+            tried_midl += 1
+            if tried_midl == revnum_rght:
+                print_debug("Failed to separate. Regression is between %d | %d: \n%s \n%s \n%s\n" % (revnum_left, revnum_rght, str(archs), str(opts), str(targets)), False, stability_log)
+                return
+            revnum_midl = common.get_real_revision(tried_midl)
+        print_debug ("separate succeed on %d(%d)" %(revnum_midl, tried_midl), False, stability_log)
+
 
         regr_old_mid = common.ex_state.tt.regression(revnum_left, revnum_midl)
         regr_mid_new = common.ex_state.tt.regression(revnum_midl, revnum_rght)

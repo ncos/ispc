@@ -725,7 +725,6 @@ def send_mail(body, msg):
 
 class RegressionTest(object):
     def __init__(self, r_left, r_rght, archs, opts, targets):
-        self.broken = []
         revnum_left = common.get_real_revision(r_left)
         revnum_rght = common.get_real_revision(r_rght)
 
@@ -792,6 +791,8 @@ class RegressionTest(object):
     def refresh_esg(self, revnum, archs, opts, targets):
         # do validation run in case the data is not in a table
         self.REVISIONS_DB = common.ex_state.tt.table.keys()
+        if str(revnum) in common.ex_state.tt.broken:
+            return False
 
         need_opts = opts
         need_archs = archs
@@ -811,7 +812,7 @@ class RegressionTest(object):
            len(need_archs) == 0 or \
            len(need_targets) == 0:
             print_debug("LLVM revision %d is already in table\n" % (revnum), False, stability_log)
-            return
+            return True
         
         only = 'R' + str(revnum) + ' ' + ' '.join(need_opts) + ' ' + ' '.join(need_archs) + ' stability'
         only_targets = ' '.join(need_targets)
@@ -820,17 +821,17 @@ class RegressionTest(object):
                                                                  " options.time = '" + str(options.time) + "'\n", False, stability_log)
         try:
             validation_run(only, only_targets, '', 0, '', '', int(options.speed), 'make -j' + str(options.speed), False, options.time)
-            
+           
         except RuntimeError, e:
             if "try_do_LLVM" not in e.message:
                 raise
             print_debug("LLVM revision %d seems to be broken!\n" % (revnum), False, stability_log)
-            self.broken.append(revnum)
-            return
+            common.ex_state.tt.set_broken(str(revnum))
+            return False
 
         # save data in the table for the future
         common.ex_state.dump("regression.dump", common.ex_state.tt)
-
+        return True
 
 
 def Main():

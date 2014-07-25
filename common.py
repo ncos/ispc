@@ -351,6 +351,11 @@ class TestTable(object):
         """ This dictionary contains {rev: [test1, test2, ...], ...}, where 'rev' is a string (revision name) and 'test#'
         is a Test() object instance """
         self.table = {}
+        self.broken = []
+
+    def set_broken(self, rev_name):
+        if str(rev_name) not in self.broken:
+            self.broken.append(str(rev_name))
 
     def add_result(self, revision_name, test_name, arch, opt, target, runfailed, compfailed):
         revision_name = str(revision_name)

@@ -195,7 +195,7 @@ def check_tools(m):
 
 
 
-# regression testing functionality
+# regression test functionality
 class TestResult(object):
     """
     this class stores basicly two integers which stand for the result
@@ -391,7 +391,9 @@ class TestTable(object):
             for tc2 in test2.test_cases:
                 """ If test cases are equal (same arch, opt and target) but tc2 has more runfails or compfails """
                 if tc1 == tc2 and tc1.result < tc2.result:
-                    regressed.append(TestCase(tc1.arch, tc1.opt, tc1.target))
+                    _tc = TestCase(tc1.arch, tc1.opt, tc1.target)
+                    _tc.result = tc2.result
+                    regressed.append(_tc)
         return regressed
  
     def regression(self, revision_old, revision_new):

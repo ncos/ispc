@@ -921,9 +921,9 @@ def Main():
             # TODO: lets translate standard revision names to revision numbers! ('3.4' -> R123456)
             # this class does all job here
 
-            targets = ['sse4-i32x4']
-            opts    = ['-O2']
-            archs   = ['x86-64']
+            targets = ['sse4-i32x8']
+            opts    = ['-O2 -O0']
+            archs   = ['x86']
             left_rev = get_rev_by_name(options.start_rev)
             rght_rev = get_rev_by_name(options.end_rev)
 

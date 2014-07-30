@@ -44,6 +44,10 @@ def read_test_table(filename):
         tt = pickle.load(fp) 
     return tt
         
+def write_test_table(filename, tt):
+    with open(filename, 'w') as fp:
+        pickle.dump(tt, fp)  
+
 
 def print_with_specific_results(tests, runfailed, compfailed):
     for test in tests:
@@ -52,12 +56,30 @@ def print_with_specific_results(tests, runfailed, compfailed):
                 print test.name.rjust(40) + repr(test_case).rjust(50)
 
 
+def merge_tts(tt1, tt2):
+    tt = TestTable()
+    for rev in tt1.table.keys():
+        for test in tt1.table[rev]:
+            for test_case in test.test_cases:
+                tt.add_result(rev, test.name, test_case.arch, 
+                              test_case.opt, test_case.target,
+                              test_case.result.runfailed, 
+                              test_case.result.compfailed)
+    for rev in tt2.table.keys():
+        for test in tt2.table[rev]:
+            for test_case in test.test_cases:
+                tt.add_result(rev, test.name, test_case.arch, 
+                              test_case.opt, test_case.target,
+                              test_case.result.runfailed, 
+                              test_case.result.compfailed)
+    return tt
 
 def check_rev_in_tt(tt, rev, tt_location):
     if not rev in tt.table.keys():
         print "Unable to locate", rev, "in table", tt_location
         print "Available LLVM revisions:", tt.table.keys()
         exit(0)
+
 
 
 if __name__ == '__main__':
@@ -86,12 +108,26 @@ if __name__ == '__main__':
         help='show succeed tests', default=False, action='store_true')
     parser.add_option('-R', '--regression', dest='regression',
         help='show regression between two specified revisions', default="")
+    # options for table merging:
+    parser.add_option('--save-to', dest='save_tt',
+        help='when merging specify location to save the result test table', default="")
+    parser.add_option('--merge', dest='merge_tt',
+        help='when merging specify location of test table to merge with', default="")
+    parser.add_option('--automerge', dest='automerge',
+        help='this will merge the input test table with all ones found in alloy_results... dirs', default=False, action='store_true')
+
 
     (options, args) = parser.parse_args()
     if (options.load_tt == None):
+        print "ERROR: -l (--load-tt) unset"
         parser.print_help()
         exit(0)
-    
+   
+    if (options.automerge == True or options.merge_tt != "") and options.save_tt == "":
+        print "ERROR: --save-to option should be set with --merge and --automerge"
+        parser.print_help()
+        exit(0)
+
     _tt = read_test_table(options.load_tt)
     ex_state.load_from_tt(_tt)
     print ex_state
@@ -135,4 +171,27 @@ if __name__ == '__main__':
 
         print ex_state.tt.regression(regr_revs[0], regr_revs[1])
 
+    # merge tables if specified
+    if (options.merge_tt != ""):
+        tt1 = ex_state.tt
+        tt2 = read_test_table(options.merge_tt)
+        tt = merge_tts(tt1, tt2)
+        write_test_table(options.save_tt, tt)
 
+    if (options.automerge == True):
+        tt = ex_state.tt
+        for elem in os.listdir(os.getcwd()):
+            if "alloy_results" in elem:
+                try:
+                    files = os.listdir(os.getcwd() + os.sep + elem)
+                except:
+                    continue
+                for f in files:
+                    if ".dump" in f:
+                        try:
+                            print os.getcwd() + os.sep + elem + os.sep + f
+                            tt2 = read_test_table(os.getcwd() + os.sep + elem + os.sep + f)
+                            tt = merge_tts(tt, tt2)
+                        except:
+                            continue   
+        write_test_table(options.save_tt, tt)

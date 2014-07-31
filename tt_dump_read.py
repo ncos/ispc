@@ -35,16 +35,22 @@
 
 from optparse import OptionParser
 from common import *
-import pickle, re
-
+import time, re
+import cPickle as pickle
 
 
 def read_test_table(filename):
+    t1 = time.clock()
+
     with open(filename, 'r') as fp:
+        t1 = time.clock()
         tt = pickle.load(fp) 
+        print "load took", time.clock() - t1, "seconds."
     return tt
         
 def write_test_table(filename, tt):
+    tt_table_sorted = sort_dict(tt.table)
+    print tt_table_sorted.keys
     with open(filename, 'w') as fp:
         pickle.dump(tt, fp)  
 
@@ -77,7 +83,7 @@ def merge_tts(tt1, tt2):
 def check_rev_in_tt(tt, rev, tt_location):
     if not rev in tt.table.keys():
         print "Unable to locate", rev, "in table", tt_location
-        print "Available LLVM revisions:", tt.table.keys()
+        print "Available LLVM revisions:", sorted(tt.table.keys(), key=lambda x: int(x))
         exit(0)
 
 
@@ -130,7 +136,6 @@ if __name__ == '__main__':
 
     _tt = read_test_table(options.load_tt)
     ex_state.load_from_tt(_tt)
-    print ex_state
 
     if options.revision != None:
         check_rev_in_tt(ex_state.tt, options.revision, options.load_tt)
@@ -138,7 +143,7 @@ if __name__ == '__main__':
     else:
         revisions = ex_state.tt.table.keys()
 
-
+    print "Available LLVM revisions:", sorted(ex_state.tt.table.keys(), key=lambda x: int(x))
     # print test cases
     if (options.succeed):
         print "\n\n Succeed:"

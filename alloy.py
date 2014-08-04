@@ -926,9 +926,21 @@ def Main():
             # TODO: lets translate standard revision names to revision numbers! ('3.4' -> R123456)
             # this class does all job here
 
-            targets = ['sse4-i32x8']
-            opts    = ['-O2 -O0']
-            archs   = ['x86']
+
+            # this is a convenience quick fix:
+            qf_settig = options.qf.split(' ')
+            if len(qf_settig) != 3:
+                print_debug("Invalid '--quick-fix' option with '-s'. qf = " + options.qf + "\n", False, "")
+                raise
+
+            #targets = ['sse4-i32x8']
+            #opts    = ['-O2 -O0']
+            #archs   = ['x86']
+
+            targets = [qf_settig[0]]
+            opts    = [qf_settig[1]]
+            archs   = [qf_settig[2]]
+
             left_rev = get_rev_by_name(options.start_rev)
             rght_rev = get_rev_by_name(options.end_rev)
 
@@ -1058,6 +1070,8 @@ if __name__ == '__main__':
         help='start revision for search', default="")
     regr_group.add_option('--end-rev', dest='end_rev',
         help='end revision for search', default="")
+    regr_group.add_option('--quick-fix', dest='qf',
+        help='set like that: qf=/"sse4-i16x8 -O0 x86-64/"', default="")
     parser.add_option_group(regr_group)
     # options for activity "setup PATHS"
     setup_group = OptionGroup(parser, "Options for setup",

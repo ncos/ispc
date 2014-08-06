@@ -38,11 +38,8 @@ import errno
 import shutil, re
 
 
-# retrieve the host name
-def get_host_name():
-    import socket
-    return socket.gethostname()
-
+# generic empty class
+class EmptyClass(object): pass
 
 # return tre 'real' (that is the last appeared in svn log) revision number 
 # 'path' is the path to the local svn repo
@@ -74,7 +71,6 @@ def get_real_revision(revision):
     for entry in info_llvm:
         if entry[0] == 'Last Changed Rev':
             return int(entry[1])
-
 
 # load/save almost every object to a file (good for bug reproducing)
 def dump(fname, obj):

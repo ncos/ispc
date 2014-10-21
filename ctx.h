@@ -195,6 +195,13 @@ public:
         'continue' statement when going through the loop body in the
         previous iteration. */
     void RestoreContinuedLanes();
+    
+    /** This method is called by code emitting IR for a loop.  It clears 
+        any lanes that contained a break since the mask has been updated to take
+        them into account.  This is necessary as all the bail out checks for 
+        breaks are meant to only deal with lanes breaking on the current iteration.
+     */
+    void ClearBreakLanes();
 
     /** Indicates that code generation for a "switch" statement is about to
         start.  isUniform indicates whether the "switch" value is uniform,
@@ -295,9 +302,17 @@ public:
         that indicates whether the two masks are equal. */
     llvm::Value *MasksAllEqual(llvm::Value *mask1, llvm::Value *mask2);
 
-    /** Generate ConstantVector, which contains ProgramIndex, i.e.
+    /** generate constantvector, which contains programindex, i.e.
         < i32 0, i32 1, i32 2, i32 3> */
     llvm::Value *ProgramIndexVector(bool is32bits = true);
+#ifdef ISPC_NVPTX_ENABLED
+    llvm::Value *ProgramIndexVectorPTX(bool is32bits = true);
+
+    /** Issues a call to __insert_int8/int16/int32/int64/float/double */
+    llvm::Value* Insert(llvm::Value *vector, llvm::Value *lane, llvm::Value *scalar);
+    /** Issues a call to __extract_int8/int16/int32/int64/float/double */
+    llvm::Value* Extract(llvm::Value *vector, llvm::Value *lane);
+#endif 
 
     /** Given a string, create an anonymous global variable to hold its
         value and return the pointer to the string. */

@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-#  Copyright (c) 2013, Intel Corporation
+#  Copyright (c) 2013-2014, Intel Corporation
 #  All rights reserved.
 # 
 #  Redistribution and use in source and binary forms, with or without
@@ -92,7 +92,7 @@ def try_do_LLVM(text, command, from_validation):
         raise RuntimeError("Error in try_do_LLVM: can't " + text)
     print_debug("DONE.\n", from_validation, alloy_build)
 
-def build_LLVM(version_LLVM, revision, folder, tarball, debug, selfbuild, extra, from_validation, force, make):
+def build_LLVM(version_LLVM, revision, folder, tarball, debug, selfbuild, extra, from_validation, force, make, gcc_toolchain_path):
     print_debug("Building LLVM. Version: " + version_LLVM + ". ", from_validation, alloy_build)
     if revision != "":
         print_debug("Revision: " + revision + ".\n", from_validation, alloy_build)
@@ -109,8 +109,7 @@ def build_LLVM(version_LLVM, revision, folder, tarball, debug, selfbuild, extra,
     if  version_LLVM == "trunk":
         SVN_PATH="trunk"
     if  version_LLVM == "3.5":
-        # SVN_PATH=tags/RELEASE_35/rc1
-        SVN_PATH="branches/release_35"
+        SVN_PATH="tags/RELEASE_350/final"
         version_LLVM = "3_5"
     if  version_LLVM == "3.4":
         SVN_PATH="tags/RELEASE_34/dot2-final"
@@ -138,6 +137,21 @@ def build_LLVM(version_LLVM, revision, folder, tarball, debug, selfbuild, extra,
     common.remove_if_exists(LLVM_SRC)
     common.remove_if_exists(LLVM_BUILD)
     common.remove_if_exists(LLVM_BIN)
+
+    # Starting with MacOS 10.9 Maverics, we depend on XCode being installed, as it contains C and C++ library headers.
+    # sysroot trick below helps finding C headers. For C++ we just check out libc++ sources.
+    mac_system_root = ""
+    if current_OS == "MacOS" and int(current_OS_version.split(".")[0]) >= 13:
+        search_path = string.split(os.environ["PATH"], os.pathsep)
+        found_xcrun = False
+        for path in search_path:
+            if os.path.exists(os.path.join(path, "xcrun")):
+                found_xcrun = True
+        if found_xcrun:
+            mac_system_root = " --with-default-sysroot=`xcrun --show-sdk-path`"
+        else:
+            error("Can't find XCode (xcrun tool) - it's required on MacOS 10.9 and newer", 1)
+
     if selfbuild:
         common.remove_if_exists(LLVM_BUILD_selfbuild)
         common.remove_if_exists(LLVM_BIN_selfbuild)
@@ -210,7 +224,10 @@ def build_LLVM(version_LLVM, revision, folder, tarball, debug, selfbuild, extra,
         os.chdir(LLVM_BUILD_selfbuild)
         try_do_LLVM("configure release version for selfbuild ",
                     "../" + LLVM_SRC + "/configure --prefix=" + llvm_home + "/" +
-                    LLVM_BIN_selfbuild + " --enable-optimized",
+                    LLVM_BIN_selfbuild + " --enable-optimized" +
+                    " --enable-targets=x86,x86_64,nvptx" +
+                    ((" --with-gcc-toolchain=" + gcc_toolchain_path) if gcc_toolchain_path != "" else "") +
+                    mac_system_root,
                     from_validation)
         try_do_LLVM("build release version for selfbuild ",
                     make, from_validation)
@@ -225,7 +242,10 @@ def build_LLVM(version_LLVM, revision, folder, tarball, debug, selfbuild, extra,
         if current_OS != "Windows":
             try_do_LLVM("configure release version ",
                     "../" + LLVM_SRC + "/configure --prefix=" + llvm_home + "/" +
-                    LLVM_BIN + " --enable-optimized" + selfbuild_compiler,
+                    LLVM_BIN + " --enable-optimized" + selfbuild_compiler +
+                    " --enable-targets=x86,x86_64,nvptx" +
+                    ((" --with-gcc-toolchain=" + gcc_toolchain_path) if gcc_toolchain_path != "" else "") +
+                    mac_system_root,
                     from_validation)
         else:
             try_do_LLVM("configure release version ",
@@ -235,7 +255,10 @@ def build_LLVM(version_LLVM, revision, folder, tarball, debug, selfbuild, extra,
     else:
         try_do_LLVM("configure debug version ",
                     "../" + LLVM_SRC + "/configure --prefix=" + llvm_home + "/" + LLVM_BIN +
-                    " --enable-debug-runtime --enable-debug-symbols --enable-keep-symbols" + selfbuild_compiler,
+                    " --enable-debug-runtime --enable-debug-symbols --enable-keep-symbols" + selfbuild_compiler +
+                    " --enable-targets=x86,x86_64,nvptx" +
+                    ((" --with-gcc-toolchain=" + gcc_toolchain_path) if gcc_toolchain_path != "" else "") +
+                    mac_system_root,
                     from_validation)
     # building llvm
     if current_OS != "Windows":
@@ -457,7 +480,7 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
     print_debug("Folder: " + os.environ["ISPC_HOME"] + "\n", False, "")
     date = datetime.datetime.now()
     print_debug("Date: " + date.strftime('%H:%M %d/%m/%Y') + "\n", False, "")
-    newest_LLVM="3.4"
+    newest_LLVM="3.5"
     msg_additional_info = ""
 # *** *** ***
 # Stability validation run
@@ -568,12 +591,12 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
         need_LLVM_rev = check_LLVM(LLVM_revisions)
         need_LLVM_rev = ["r" + i[len("trunk_r"):] for i in need_LLVM_rev]
         for i in range(0,len(need_LLVM)):
-            build_LLVM(need_LLVM[i], "", "", "", False, False, False, True, False, make)
+            build_LLVM(need_LLVM[i], "", "", "", False, False, False, True, False, make, options.gcc_toolchain_path)
         for i in range(0,len(need_LLVM_rev)):
-            build_LLVM("trunk", need_LLVM_rev[i], "", "", False, False, False, True, False, make)
+            build_LLVM("trunk", need_LLVM_rev[i], "", "", False, False, False, True, False, make, options.gcc_toolchain_path)
         LLVM += LLVM_revisions
         print "LLVM versions:", LLVM
- 
+
 # begin validation run for stabitily
         common.remove_if_exists(stability.in_file)
         R = [[[],[]],[[],[]],[[],[]],[[],[]]]
@@ -678,7 +701,7 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
 # prepare newest LLVM
         need_LLVM = check_LLVM([newest_LLVM])
         if len(need_LLVM) != 0:
-            build_LLVM(need_LLVM[0], "", "", "", False, False, False, True, False, make)
+            build_LLVM(need_LLVM[0], "", "", "", False, False, False, True, False, make, options.gcc_toolchain_path)
         if perf_llvm == False:
             # prepare reference point. build both test and reference compilers
             try_do_LLVM("apply git", "git branch", True)
@@ -905,6 +928,11 @@ def Main():
         parser.print_help()
         exit(0)
 
+    if options.notify != "":
+        # in case 'notify' option is used but build (in '-b' for example) failed we do not want to have trash in our message body
+        # NOTE! 'notify.log' must also be cleaned up at the beginning of every message sending function, i.e. in 'validation_run()'
+        common.remove_if_exists(os.environ["ISPC_HOME"] + os.sep + "notify_log.log")
+
     setting_paths(options.llvm_home, options.ispc_home, options.sde_home)
     if os.environ.get("LLVM_HOME") == None:
         error("you have no LLVM_HOME", 1)
@@ -948,7 +976,7 @@ def Main():
         start_time = time.time()
         if options.build_llvm:
             build_LLVM(options.version, options.revision, options.folder, options.tarball,
-                    options.debug, options.selfbuild, options.extra, False, options.force, make)
+                    options.debug, options.selfbuild, options.extra, False, options.force, make, options.gcc_toolchain_path)
         if options.validation_run:
             validation_run(options.only, options.only_targets, options.branch,
                     options.number_for_performance, options.notify, options.update, int(options.speed),
@@ -1035,7 +1063,7 @@ if __name__ == '__main__':
     "Try to build compiler with all LLVM\n\talloy.py -r --only=build\n" +
     "Performance validation run with 10 runs of each test and comparing to branch 'old'\n\talloy.py -r --only=performance --compare-with=old --number=10\n" +
     "Validation run. Update fail_db.txt with new fails, send results to my@my.com\n\talloy.py -r --update-errors=F --notify='my@my.com'\n" +
-    "Test KNC target (not tested when tested all supported targets, so should be set explicitly via --only-targets)\n\talloy.py -r --only='satbility' --only-targets='knc'\n")
+    "Test KNC target (not tested when tested all supported targets, so should be set explicitly via --only-targets)\n\talloy.py -r --only='stability' --only-targets='knc'\n")
 
 
     num_threads="%s" % multiprocessing.cpu_count()
@@ -1055,6 +1083,10 @@ if __name__ == '__main__':
                     "These options must be used with -b option.")
     llvm_group.add_option('--version', dest='version',
         help='version of llvm to build: 3.2 3.3 3.4 3.5 trunk. Default: trunk', default="trunk")
+    llvm_group.add_option('--with-gcc-toolchain', dest='gcc_toolchain_path',
+         help='GCC install dir to use when building clang. It is important to set when ' +
+         'you have alternative gcc installation. Note that otherwise gcc from standard ' +
+         'location will be used, not from your PATH', default="")
     llvm_group.add_option('--revision', dest='revision',
         help='revision of llvm to build in format r172870', default="")
     llvm_group.add_option('--debug', dest='debug',
@@ -1092,7 +1124,7 @@ if __name__ == '__main__':
             'build (only build with different LLVM), 3.2, 3.3, 3.4 3.5, trunk, native (do not use SDE), current (do not rebuild ISPC).',
             default="")
     run_group.add_option('--perf_LLVM', dest='perf_llvm',
-        help='compare LLVM 3.3 with "--compare-with", default trunk', default=False, action='store_true')
+        help='compare LLVM 3.5 with "--compare-with", default trunk', default=False, action='store_true')
     parser.add_option_group(run_group)
     # options for activity "regression test"
     regr_group = OptionGroup(parser, "Options for regression search",

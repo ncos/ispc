@@ -38,7 +38,7 @@
 #ifndef ISPC_H
 #define ISPC_H
 
-#define ISPC_VERSION "1.7.1dev"
+#define ISPC_VERSION "1.8.1dev"
 
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) && !defined(LLVM_3_5) && !defined(LLVM_3_6)
 #error "Only LLVM 3.2, 3.3, 3.4, 3.5 and the 3.6 development branch are supported"
@@ -176,6 +176,9 @@ public:
         also that __best_available_isa() needs to be updated if ISAs are
         added or the enumerant values are reordered.  */
     enum ISA {
+#ifdef ISPC_NVPTX_ENABLED
+               NVPTX,
+#endif 
 #ifdef ISPC_ARM_ENABLED
                NEON32, NEON16, NEON8,
 #endif
@@ -280,6 +283,8 @@ public:
     
     bool hasRcpd() const {return m_hasRcpd;}
 
+    bool hasVecPrefetch() const {return m_hasVecPrefetch;}
+
 private:
 
     /** llvm Target object representing this target. */
@@ -382,6 +387,9 @@ private:
     
     /** Indicates whether there is an ISA double precision rcp. */
     bool m_hasRcpd;
+
+    /** Indicates whether the target has hardware instruction for vector prefetch. */
+    bool m_hasVecPrefetch;
 };
 
 

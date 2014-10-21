@@ -214,6 +214,8 @@ def run_test(testname):
             return (1, 0)
         else:
             global is_generic_target
+            global is_nvptx_target
+            global is_nvptx_nvvm
             if is_windows:
                 if is_generic_target:
                     obj_name = "%s.cpp" % os.path.basename(filename)
@@ -228,6 +230,13 @@ def run_test(testname):
             else:
                 if is_generic_target:
                     obj_name = "%s.cpp" % testname
+                elif is_nvptx_target:
+                  if os.environ.get("NVVM") == "1":
+                    is_nvptx_nvvm = True
+                    obj_name = "%s.ll" % testname
+                  else:
+                    obj_name = "%s.ptx" % testname
+                    is_nvptx_nvvm = False
                 else:
                     obj_name = "%s.o" % testname
                 exe_name = "%s.run" % testname
@@ -263,17 +272,47 @@ def run_test(testname):
                     cc_cmd += ' -Wl,-no_pie'
                 if should_fail:
                     cc_cmd += " -DEXPECT_FAILURE"
+
+                if is_nvptx_target:
+                  nvptxcc_exe = "ptxtools/runtest_ptxcc.sh"
+                  nvptxcc_exe_rel = add_prefix(nvptxcc_exe)
+                  cc_cmd = "%s %s -DTEST_SIG=%d -o %s" % \
+                      (nvptxcc_exe_rel, obj_name, match, exe_name)
+
+            ispc_cmd = ispc_exe_rel + " --woff %s -o %s -O3 --arch=%s --target=%s" % \
+                       (filename, obj_name, options.arch, options.target)
+
             if (options.target == "knc"):
                 ispc_cmd = ispc_exe_rel + " --woff %s -o %s --arch=%s --target=%s" % \
                            (filename, obj_name, options.arch, "generic-16")
             else:
                 ispc_cmd = ispc_exe_rel + " --woff %s -o %s --arch=%s --target=%s" % \
                            (filename, obj_name, options.arch, options.target)
+
             if options.no_opt:
                 ispc_cmd += " -O0" 
             if is_generic_target:
                 ispc_cmd += " --emit-c++ --c++-include-file=%s" % add_prefix(options.include_file)
+
+            if is_nvptx_target:
+                filename4ptx = "/tmp/"+os.path.basename(filename)+".parsed.ispc"
+#                grep_cmd = "grep -v 'export uniform int width' %s > %s " % \
+                grep_cmd = "sed  's/export\ uniform\ int\ width/static uniform\ int\ width/g' %s > %s" % \
+                    (filename, filename4ptx)
+                if options.verbose:
+                  print "Grepping: %s" % grep_cmd
+                sp = subprocess.Popen(grep_cmd, shell=True)
+                sp.communicate()
+                if is_nvptx_nvvm:
+                  ispc_cmd = ispc_exe_rel + " --woff %s -o %s -O3 --emit-llvm --target=%s" % \
+                         (filename4ptx, obj_name, options.target)
+                else:
+                  ispc_cmd = ispc_exe_rel + " --woff %s -o %s -O3 --emit-asm --target=%s" % \
+                         (filename4ptx, obj_name, options.target)
+
+
              
+
         # compile the ispc code, make the executable, and run it...
         (compile_error, run_error) = run_cmds([ispc_cmd, cc_cmd], 
                                               options.wrapexe + " " + exe_name, \
@@ -297,8 +336,8 @@ def run_test(testname):
 # pull tests to run from the given queue and run them.  Multiple copies of
 # this function will be running in parallel across all of the CPU cores of
 # the system.
-def run_tasks_from_queue(queue, queue_ret, queue_skip, total_tests_arg, max_test_length_arg, counter, mutex, glob_var):
-    # This is needed on windows because windows doen't copy globals from parent process whili multiprocessing
+def run_tasks_from_queue(queue, queue_ret, queue_error, queue_finish, total_tests_arg, max_test_length_arg, counter, mutex, glob_var):
+    # This is needed on windows because windows doesn't copy globals from parent process while multiprocessing
     global is_windows
     is_windows = glob_var[0]
     global options
@@ -309,6 +348,7 @@ def run_tasks_from_queue(queue, queue_ret, queue_skip, total_tests_arg, max_test
     ispc_exe = glob_var[3]
     global is_generic_target
     is_generic_target = glob_var[4]
+    global is_nvptx_target
     global run_tests_log
     run_tests_log = glob_var[5]    
 
@@ -320,14 +360,44 @@ def run_tasks_from_queue(queue, queue_ret, queue_skip, total_tests_arg, max_test
         os.chdir(tmpdir)
     else:
         olddir = ""
-    
+
+    # by default, the thread is presumed to fail
+    queue_error.put('ERROR')
     compile_error_files = [ ]
     run_succeed_files = [ ]
     run_error_files = [ ]
     skip_files = [ ]
+
     while True:
-        filename = queue.get()
-        if (filename == 'STOP'):
+        if not queue.empty():
+            filename = queue.get()
+            if check_test(filename):
+                try:
+                    (compile_error, run_error) = run_test(filename)
+                except:
+                    # This is in case the child has unexpectedly died or some other exception happened
+                    # it`s not what we wanted, so we leave ERROR in queue_error
+                    print_debug("ERROR: run_test function raised an exception: %s\n" % (sys.exc_info()[1]), s, run_tests_log)
+                    # minus one thread, minus one STOP
+                    queue_finish.get()
+                    # needed for queue join
+                    queue_finish.task_done()
+                    # exiting the loop, returning from the thread
+                    break
+
+                if compile_error == 0 and run_error == 0:
+                    run_succeed_files += [ filename ]
+                if compile_error != 0:
+                    compile_error_files += [ filename ]
+                if run_error != 0:
+                    run_error_files += [ filename ]
+
+                with mutex:
+                    update_progress(filename, total_tests_arg, counter, max_test_length_arg)
+            else:
+                skip_files += [ filename ]
+
+        else:
             queue_ret.put((compile_error_files, run_error_files, skip_files, run_succeed_files))
             if is_windows:
                 try:
@@ -341,27 +411,16 @@ def run_tasks_from_queue(queue, queue_ret, queue_skip, total_tests_arg, max_test
                     os.rmdir(tmpdir)
                 except:
                     None
-                
-            sys.exit(0)
 
-        if check_test(filename):
-            try:
-                (compile_error, run_error) = run_test(filename)
-            except:
-                print_debug("ERROR: run_test function raised an exception: %s\n" % (sys.exc_info()[1]), s, run_tests_log)
-                sys.exit(-1) # This is in case the child has unexpectedly died or some other exception happened
-            
-            if compile_error == 0 and run_error == 0:
-                run_succeed_files += [ filename ]
-            if compile_error != 0:
-                compile_error_files += [ filename ]
-            if run_error != 0:
-                run_error_files += [ filename ]
-
-            with mutex:
-                update_progress(filename, total_tests_arg, counter, max_test_length_arg)
-        else:
-            skip_files += [ filename ]
+            # the next line is crucial for error indication!
+            # this thread ended correctly, so take ERROR back
+            queue_error.get()
+            # minus one thread, minus one STOP
+            queue_finish.get()
+            # needed for queue join
+            queue_finish.task_done()
+            # exiting the loop, returning from the thread
+            break
 
 
 def sigint(signum, frame):
@@ -532,6 +591,8 @@ def run_tests(options1, args, print_version):
  
     if options.target == 'neon':
         options.arch = 'arm'
+    if options.target == "nvptx":
+        options.arch = "nvptx64"
  
     # use relative path to not depend on host directory, which may possibly
     # have white spaces and unicode characters.
@@ -561,6 +622,10 @@ def run_tests(options1, args, print_version):
     is_generic_target = ((options.target.find("generic-") != -1 and
                      options.target != "generic-1" and options.target != "generic-x1") or 
                      options.target == "knc")
+
+    global is_nvptx_target
+    is_nvptx_target = (options.target.find("nvptx") != -1)
+
     if is_generic_target and options.include_file == None:
         if options.target == "generic-4" or options.target == "generic-x4":
             error("No generics #include specified; using examples/intrinsics/sse4.h\n", 2)
@@ -582,8 +647,8 @@ def run_tests(options1, args, print_version):
             options.include_file = "examples/intrinsics/generic-64.h"
             options.target = "generic-64"
         elif options.target == "knc":
-            error("No knc #include specified; using examples/intrinsics/knc-i1x16.h\n", 2)
-            options.include_file = "examples/intrinsics/knc-i1x16.h"
+            error("No knc #include specified; using examples/intrinsics/knc.h\n", 2)
+            options.include_file = "examples/intrinsics/knc.h"
  
     if options.compiler_exe == None:
         if (options.target == "knc"): 
@@ -684,10 +749,16 @@ def run_tests(options1, args, print_version):
     q = multiprocessing.Queue()
     for fn in files:
         q.put(fn)
-    for x in range(nthreads):
-        q.put('STOP')
+    # qret is a queue for returned data
     qret = multiprocessing.Queue()
-    qskip = multiprocessing.Queue()
+    # qerr is an error indication queue
+    qerr = multiprocessing.Queue()
+    # qfin is a waiting queue: JoinableQueue has join() and task_done() methods
+    qfin = multiprocessing.JoinableQueue()
+
+    # for each thread, there is a STOP in qfin to synchronize execution
+    for x in range(nthreads):
+        qfin.put('STOP')
 
     # need to catch sigint so that we can terminate all of the tasks if
     # we're interrupted
@@ -702,14 +773,14 @@ def run_tests(options1, args, print_version):
     global task_threads
     task_threads = [0] * nthreads
     for x in range(nthreads):
-        task_threads[x] = multiprocessing.Process(target=run_tasks_from_queue, args=(q, qret, qskip, total_tests,
+        task_threads[x] = multiprocessing.Process(target=run_tasks_from_queue, args=(q, qret, qerr, qfin, total_tests,
                 max_test_length, finished_tests_counter, finished_tests_counter_lock, glob_var))
         task_threads[x].start()
 
-    # wait for them to all finish and then return the number that failed
-    # (i.e. return 0 if all is ok)
-    for t in task_threads:
-        t.join()
+    # wait for them all to finish and rid the queue of STOPs
+    # join() here just waits for synchronization
+    qfin.join()
+
     if options.non_interactive == False:
         print_debug("\n", s, run_tests_log)
 
@@ -742,10 +813,9 @@ def run_tests(options1, args, print_version):
     except:
         print_debug("Exception in ex_state. Skipping...", s, run_tests_log)
 
-
-    for jb in task_threads:
-        if not jb.exitcode == 0:
-            raise OSError(2, 'Some test subprocess has thrown an exception', '')
+    # if all threads ended correctly, qerr is empty
+    if not qerr.empty():
+        raise OSError(2, 'Some test subprocess has thrown an exception', '')
 
     if options.non_interactive:
         print_debug(" Done %d / %d\n" % (finished_tests_counter.value, total_tests), s, run_tests_log)

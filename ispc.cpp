@@ -199,7 +199,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
     m_hasTranscendentals(false),
     m_hasTrigonometry(false),
     m_hasRsqrtd(false),
-    m_hasRcpd(false)
+    m_hasRcpd(false),
+    m_hasVecPrefetch(false)
 {
     if (isa == NULL) {
         if (cpu != NULL) {
@@ -242,6 +243,11 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
             arch = "arm";
         else
 #endif
+#ifdef ISPC_NVPTX_ENABLED
+         if(!strncmp(isa, "nvptx", 5))
+           arch = "nvptx64";
+         else
+#endif /* ISPC_NVPTX_ENABLED */
             arch = "x86-64";
     }
 
@@ -381,6 +387,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_hasTrigonometry = false;
         this->m_hasGather = this->m_hasScatter = true;
         this->m_hasRsqrtd = this->m_hasRcpd = true;
+        // It's set to true, because MIC has hardware vector prefetch instruction
+        this->m_hasVecPrefetch = true;
     }
     else if (!strcasecmp(isa, "generic-32") ||
              !strcasecmp(isa, "generic-x32")) {
@@ -579,6 +587,23 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_maskBitCount = 32;
     }
 #endif
+#ifdef ISPC_NVPTX_ENABLED
+    else if (!strcasecmp(isa, "nvptx")) 
+    {
+        this->m_isa = Target::NVPTX;
+        this->m_cpu = "sm_35";
+        this->m_nativeVectorWidth = 32;
+        this->m_nativeVectorAlignment = 32;
+        this->m_vectorWidth = 1;
+        this->m_hasHalf = true;
+        this->m_maskingIsFree = true;
+        this->m_maskBitCount = 1;
+        this->m_hasTranscendentals = true;
+        this->m_hasTrigonometry = true;
+        this->m_hasGather = this->m_hasScatter = false;
+        cpuFromIsa = "sm_35";
+    }
+#endif /* ISPC_NVPTX_ENABLED */
     else {
         Error(SourcePos(), "Target \"%s\" is unknown.  Choices are: %s.",
                 isa, SupportedTargets());
@@ -676,6 +701,12 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
                 "i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-"
                 "f80:128:128-n8:16:32:64-S128-v16:16:16-v32:32:32-v4:128:128";
         }
+#ifdef ISPC_NVPTX_ENABLED
+        else if (m_isa == Target::NVPTX)
+        {
+          dl_string = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v32:32:32-v64:64:64-v128:128:128-n16:32:64";
+        }
+#endif
 
         // 3. Finally set member data
         m_dataLayout = new llvm::DataLayout(dl_string);
@@ -692,6 +723,9 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         // Initialize target-specific "target-feature" attribute.
         if (!m_attributes.empty()) {
             llvm::AttrBuilder attrBuilder;
+#ifdef ISPC_NVPTX_ENABLED
+            if (m_isa != Target::NVPTX)
+#endif
             attrBuilder.addAttribute("target-cpu", this->m_cpu);
             attrBuilder.addAttribute("target-features", this->m_attributes);
             this->m_tf_attributes = new llvm::AttributeSet(
@@ -740,6 +774,9 @@ Target::SupportedTargets() {
 #ifdef ISPC_ARM_ENABLED
         "neon-i8x16, neon-i16x8, neon-i32x4, "
 #endif
+#ifdef ISPC_NVPTX_ENABLED
+        "nvptx, "
+#endif
         "sse2-i32x4, sse2-i32x8, "
         "sse4-i32x4, sse4-i32x8, sse4-i16x8, sse4-i8x16, "
         "avx1-i32x4, "
@@ -774,6 +811,10 @@ Target::GetTripleString() const {
             triple.setArchName("i386");
         else if (m_arch == "x86-64")
             triple.setArchName("x86_64");
+#ifdef ISPC_NVPTX_ENABLED
+        else if (m_arch == "nvptx64")
+          triple = llvm::Triple("nvptx64", "nvidia", "cuda");
+#endif /* ISPC_NVPTX_ENABLED */
         else
             triple.setArchName(m_arch);
     }
@@ -806,6 +847,10 @@ Target::ISAToString(ISA isa) {
         return "avx2";
     case Target::GENERIC:
         return "generic";
+#ifdef ISPC_NVPTX_ENABLED
+    case Target::NVPTX:
+        return "nvptx";
+#endif /* ISPC_NVPTX_ENABLED */
     default:
         FATAL("Unhandled target in ISAToString()");
     }
@@ -844,6 +889,10 @@ Target::ISAToTargetString(ISA isa) {
         return "avx2-i32x8";
     case Target::GENERIC:
         return "generic-4";
+#ifdef ISPC_NVPTX_ENABLED
+    case Target::NVPTX:
+        return "nvptx";
+#endif /* ISPC_NVPTX_ENABLED */
     default:
         FATAL("Unhandled target in ISAToTargetString()");
     }

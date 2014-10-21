@@ -1584,6 +1584,50 @@ define void @__prefetch_read_uniform_nt(i8 *) alwaysinline {
   call void @llvm.prefetch(i8 * %0, i32 0, i32 0, i32 1)
   ret void
 }
+
+define void @__prefetch_read_varying_1(<WIDTH x i64> %addr, <WIDTH x MASK> %mask) alwaysinline {
+  per_lane(WIDTH, <WIDTH x MASK> %mask, `
+  %iptr_LANE_ID = extractelement <WIDTH x i64> %addr, i32 LANE
+  %ptr_LANE_ID = inttoptr i64 %iptr_LANE_ID to i8*
+  call void @llvm.prefetch(i8 * %ptr_LANE_ID, i32 0, i32 3, i32 1)
+  ')
+  ret void
+}
+
+declare void @__prefetch_read_varying_1_native(i8 * %base, i32 %scale, <WIDTH x i32> %offsets, <WIDTH x MASK> %mask) nounwind
+
+define void @__prefetch_read_varying_2(<WIDTH x i64> %addr, <WIDTH x MASK> %mask) alwaysinline {
+  per_lane(WIDTH, <WIDTH x MASK> %mask, `
+  %iptr_LANE_ID = extractelement <WIDTH x i64> %addr, i32 LANE
+  %ptr_LANE_ID = inttoptr i64 %iptr_LANE_ID to i8*
+  call void @llvm.prefetch(i8 * %ptr_LANE_ID, i32 0, i32 2, i32 1)
+  ')
+  ret void
+}
+
+declare void @__prefetch_read_varying_2_native(i8 * %base, i32 %scale, <WIDTH x i32> %offsets, <WIDTH x MASK> %mask) nounwind
+
+define void @__prefetch_read_varying_3(<WIDTH x i64> %addr, <WIDTH x MASK> %mask) alwaysinline {
+  per_lane(WIDTH, <WIDTH x MASK> %mask, `
+  %iptr_LANE_ID = extractelement <WIDTH x i64> %addr, i32 LANE
+  %ptr_LANE_ID = inttoptr i64 %iptr_LANE_ID to i8*
+  call void @llvm.prefetch(i8 * %ptr_LANE_ID, i32 0, i32 1, i32 1)
+  ')
+  ret void
+}
+
+declare void @__prefetch_read_varying_3_native(i8 * %base, i32 %scale, <WIDTH x i32> %offsets, <WIDTH x MASK> %mask) nounwind
+
+define void @__prefetch_read_varying_nt(<WIDTH x i64> %addr, <WIDTH x MASK> %mask) alwaysinline {
+  per_lane(WIDTH, <WIDTH x MASK> %mask, `
+  %iptr_LANE_ID = extractelement <WIDTH x i64> %addr, i32 LANE
+  %ptr_LANE_ID = inttoptr i64 %iptr_LANE_ID to i8*
+  call void @llvm.prefetch(i8 * %ptr_LANE_ID, i32 0, i32 0, i32 1)
+  ')
+  ret void
+}
+
+declare void @__prefetch_read_varying_nt_native(i8 * %base, i32 %scale, <WIDTH x i32> %offsets, <WIDTH x MASK> %mask) nounwind
 ')
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -2535,6 +2579,31 @@ declare void
 @__pseudo_scatter_base_offsets64_double(i8 * nocapture, i32, <WIDTH x i64>,
                                         <WIDTH x double>, <WIDTH x MASK>) nounwind
 
+
+declare void @__pseudo_prefetch_read_varying_1(<WIDTH x i64>, <WIDTH x MASK>) nounwind
+
+declare void
+@__pseudo_prefetch_read_varying_1_native(i8 *, i32, <WIDTH x i32>,
+                                         <WIDTH x MASK>) nounwind
+
+declare void @__pseudo_prefetch_read_varying_2(<WIDTH x i64>, <WIDTH x MASK>) nounwind
+
+declare void
+@__pseudo_prefetch_read_varying_2_native(i8 *, i32, <WIDTH x i32>,
+                                         <WIDTH x MASK>) nounwind
+
+declare void @__pseudo_prefetch_read_varying_3(<WIDTH x i64>, <WIDTH x MASK>) nounwind
+
+declare void
+@__pseudo_prefetch_read_varying_3_native(i8 *, i32, <WIDTH x i32>,
+                                         <WIDTH x MASK>) nounwind
+
+declare void @__pseudo_prefetch_read_varying_nt(<WIDTH x i64>, <WIDTH x MASK>) nounwind
+
+declare void
+@__pseudo_prefetch_read_varying_nt_native(i8 *, i32, <WIDTH x i32>,
+                                         <WIDTH x MASK>) nounwind
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 declare void @__use8(<WIDTH x i8>)
@@ -3033,6 +3102,41 @@ ifelse(HAVE_SCATTER, `1',
   call void @__scatter_factored_base_offsets64_double(i8 * %ptr, <WIDTH x i64> %v64, i32 0, <WIDTH x i64> %v64,
                                                     <WIDTH x double> %vd, <WIDTH x MASK> %mask)
 ')
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; prefetchs
+
+  call void @__pseudo_prefetch_read_varying_1(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
+  call void @__pseudo_prefetch_read_varying_1_native(i8 * %ptr, i32 0,
+                                                     <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_1_native(i8 * %ptr, i32 0,
+                                              <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_1(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
+  call void @__pseudo_prefetch_read_varying_2(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
+  call void @__pseudo_prefetch_read_varying_2_native(i8 * %ptr, i32 0,
+                                                     <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_2_native(i8 * %ptr, i32 0,
+                                              <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_2(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
+  call void @__pseudo_prefetch_read_varying_3(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
+  call void @__pseudo_prefetch_read_varying_3_native(i8 * %ptr, i32 0,
+                                                     <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_3_native(i8 * %ptr, i32 0,
+                                              <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_3(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
+  call void @__pseudo_prefetch_read_varying_nt(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
+  call void @__pseudo_prefetch_read_varying_nt_native(i8 * %ptr, i32 0,
+                                                     <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_nt_native(i8 * %ptr, i32 0,
+                                              <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_nt(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
 
   ret void
 }
@@ -4860,6 +4964,62 @@ declare  double @__rcp_uniform_double(double)
 declare <WIDTH x double> @__rcp_varying_double(<WIDTH x double>)
 ')
 
+define(`declare_nvptx',
+`
+declare i32 @__program_index()  nounwind readnone alwaysinline
+declare i32 @__program_count()  nounwind readnone alwaysinline
+declare i32 @__warp_index()  nounwind readnone alwaysinline
+declare i32 @__task_index0()  nounwind readnone alwaysinline
+declare i32 @__task_index1()  nounwind readnone alwaysinline
+declare i32 @__task_index2()  nounwind readnone alwaysinline
+declare i32 @__task_index()  nounwind readnone alwaysinline
+declare i32 @__task_count0()  nounwind readnone alwaysinline
+declare i32 @__task_count1()  nounwind readnone alwaysinline
+declare i32 @__task_count2()  nounwind readnone alwaysinline
+declare i32 @__task_count()  nounwind readnone alwaysinline
+declare i64* @__cvt_loc2gen(i64 addrspace(3)*) nounwind readnone alwaysinline
+declare i64* @__cvt_const2gen(i64 addrspace(4)*) nounwind readnone alwaysinline
+declare i64* @__cvt_loc2gen_var(i64 addrspace(3)*) nounwind readnone alwaysinline
+declare i64 @__movmsk_ptx(<WIDTH x i1>) nounwind readnone alwaysinline;
+')
+
+define(`global_atomic_varying',`
+declare <$1 x $3> @__atomic_$2_varying_$4_global(<$1 x i64> %ptr, <$1 x $3> %val, <$1 x MASK> %maskv) nounwind alwaysinline
+')
+
+define(`global_atomic_cas_varying',`
+declare <$1 x $3> @__atomic_$2_varying_$4_global(<$1 x i64> %ptr, <$1 x $3> %cmp, <$1 x $3> %val, <$1 x MASK> %maskv) nounwind alwaysinline
+')
+
+global_atomic_cas_varying(WIDTH, compare_exchange, i32, int32)
+global_atomic_cas_varying(WIDTH, compare_exchange, i64, int64)
+global_atomic_cas_varying(WIDTH, compare_exchange, float, float)
+global_atomic_cas_varying(WIDTH, compare_exchange, double, double)
+
+global_atomic_varying(WIDTH, swap, i32, int32)
+global_atomic_varying(WIDTH, swap, i64, int64)
+global_atomic_varying(WIDTH, swap, float, float)
+global_atomic_varying(WIDTH, swap, double, double)
+
+global_atomic_varying(WIDTH, add, i32, int32)
+global_atomic_varying(WIDTH, sub, i32, int32)
+global_atomic_varying(WIDTH, and, i32, int32)
+global_atomic_varying(WIDTH, or, i32, int32)
+global_atomic_varying(WIDTH, xor, i32, int32)
+global_atomic_varying(WIDTH, min, i32, int32)
+global_atomic_varying(WIDTH, max, i32, int32)
+global_atomic_varying(WIDTH, umin, i32, uint32)
+global_atomic_varying(WIDTH, umax, i32, uint32)
+
+global_atomic_varying(WIDTH, add, i64, int64)
+global_atomic_varying(WIDTH, sub, i64, int64)
+global_atomic_varying(WIDTH, and, i64, int64)
+global_atomic_varying(WIDTH, or, i64, int64)
+global_atomic_varying(WIDTH, xor, i64, int64)
+global_atomic_varying(WIDTH, min, i64, int64)
+global_atomic_varying(WIDTH, max, i64, int64)
+global_atomic_varying(WIDTH, umin, i64, uint64)
+global_atomic_varying(WIDTH, umax, i64, uint64)
 
 define(`transcendetals_decl',`
     declare float @__log_uniform_float(float) nounwind readnone

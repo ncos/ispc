@@ -168,7 +168,11 @@ lStripUnusedDebugInfo(llvm::Module *module) {
     // loop over the compile units that contributed to the final module
     if (llvm::NamedMDNode *cuNodes = module->getNamedMetadata("llvm.dbg.cu")) {
         for (unsigned i = 0, ie = cuNodes->getNumOperands(); i != ie; ++i) {
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5)
             llvm::MDNode *cuNode = cuNodes->getOperand(i);
+#else // LLVM 3.6+
+            llvm::MDNode *cuNode = llvm::cast<llvm::MDNode>(cuNodes->getOperand(i));
+#endif
             llvm::DICompileUnit cu(cuNode);
             llvm::DIArray subprograms = cu.getSubprograms();
             std::vector<llvm::Value *> usedSubprograms;
@@ -1436,7 +1440,8 @@ lEmitStructDecl(const StructType *st, std::vector<const StructType *> *emittedSt
     for (int i = 0; i < st->GetElementCount(); ++i) {
         const Type *type = st->GetElementType(i)->GetAsNonConstType();
         std::string d = type->GetCDeclaration(st->GetElementName(i));
-        if (type->IsVaryingType()) {
+	// Don't expand struct members as their insides will be expanded.
+        if (type->IsVaryingType() && (CastType<StructType>(type) == NULL)) {
           fprintf(file, "    %s[%d];\n", d.c_str(), g->target->getVectorWidth());
         }
         else {

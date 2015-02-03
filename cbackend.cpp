@@ -649,6 +649,8 @@ static std::string CBEMangle(const std::string &S) {
 }
 
 std::string CWriter::getStructName(llvm::StructType *ST) {
+
+  Out << "/*" << __LINE__ << "*/";
   if (!ST->isLiteral() && !ST->getName().empty())
     return CBEMangle("l_"+ST->getName().str());
 
@@ -670,6 +672,7 @@ void CWriter::printStructReturnPointerFunctionType(llvm::raw_ostream &Out,
                                                    const llvm::AttributeSet &PAL,
 #endif
                                                    llvm::PointerType *TheTy) {
+  Out << "/*" << __LINE__ << "*/";
   llvm::FunctionType *FTy = llvm::cast<llvm::FunctionType>(TheTy->getElementType());
   std::string tstr;
   llvm::raw_string_ostream FunctionInnards(tstr);
@@ -720,6 +723,7 @@ void CWriter::printStructReturnPointerFunctionType(llvm::raw_ostream &Out,
 llvm::raw_ostream &
 CWriter::printSimpleType(llvm::raw_ostream &Out, llvm::Type *Ty, bool isSigned,
                          const std::string &NameSoFar) {
+  Out << "/*" << __LINE__ << "*/";
   assert((Ty->isFloatingPointTy() || Ty->isX86_MMXTy() || Ty->isIntegerTy() || Ty->isVectorTy() || Ty->isVoidTy()) &&
          "Invalid type for printSimpleType");
   switch (Ty->getTypeID()) {
@@ -816,6 +820,8 @@ llvm::raw_ostream &CWriter::printType(llvm::raw_ostream &Out, llvm::Type *Ty,
 #endif
                                       ) {
 
+  Out << "/*" << __LINE__ << "*/";
+
   if (Ty->isFloatingPointTy() || Ty->isX86_MMXTy() || Ty->isIntegerTy() || Ty->isVectorTy() || Ty->isVoidTy()) {
     printSimpleType(Out, Ty, isSigned, NameSoFar);
     return Out;
@@ -876,6 +882,8 @@ llvm::raw_ostream &CWriter::printType(llvm::raw_ostream &Out, llvm::Type *Ty,
 
     Out << "struct " << NameSoFar << " {\n";
 
+    Out << "// printType - start(879)\n";
+
     // print initialization func
     if (STy->getNumElements() > 0) {
         Out << "  static " << NameSoFar << " init(";
@@ -896,6 +904,8 @@ llvm::raw_ostream &CWriter::printType(llvm::raw_ostream &Out, llvm::Type *Ty,
         Out << "  }\n";
     }
 
+    Out << "// printType - (901)\n";
+
     unsigned Idx = 0;
     for (llvm::StructType::element_iterator I = STy->element_begin(),
            E = STy->element_end(); I != E; ++I) {
@@ -906,6 +916,8 @@ llvm::raw_ostream &CWriter::printType(llvm::raw_ostream &Out, llvm::Type *Ty,
     Out << '}';
     if (STy->isPacked())
       Out << " __attribute__ ((packed))";
+
+    Out << "// printType - end(914)\n";
     return Out;
   }
 
@@ -974,6 +986,7 @@ llvm::raw_ostream &CWriter::printType(llvm::raw_ostream &Out, llvm::Type *Ty,
 void CWriter::printConstantArray(llvm::ConstantArray *CPA, bool Static) {
   printConstant(llvm::cast<llvm::Constant>(CPA->getOperand(0)), Static);
   for (unsigned i = 1, e = CPA->getNumOperands(); i != e; ++i) {
+  Out << "/*" << __LINE__ << "*/";
     Out << ", ";
     printConstant(llvm::cast<llvm::Constant>(CPA->getOperand(i)), Static);
   }
@@ -982,6 +995,7 @@ void CWriter::printConstantArray(llvm::ConstantArray *CPA, bool Static) {
 void CWriter::printConstantVector(llvm::ConstantVector *CP, bool Static) {
   printConstant(llvm::cast<llvm::Constant>(CP->getOperand(0)), Static);
   for (unsigned i = 1, e = CP->getNumOperands(); i != e; ++i) {
+  Out << "/*" << __LINE__ << "*/";
     Out << ", ";
     printConstant(llvm::cast<llvm::Constant>(CP->getOperand(i)), Static);
   }
@@ -989,6 +1003,7 @@ void CWriter::printConstantVector(llvm::ConstantVector *CP, bool Static) {
 
 void CWriter::printConstantDataSequential(llvm::ConstantDataSequential *CDS,
                                           bool Static) {
+  Out << "/*" << __LINE__ << "*/";
   // As a special case, print the array as a string if it is an array of
   // ubytes or an array of sbytes with positive values.
   //
@@ -1103,6 +1118,7 @@ static bool isFPCSafeToPrint(const llvm::ConstantFP *CFP) {
 /// Return value indicates whether a closing paren is needed.
 /// @brief Print a cast
 bool CWriter::printCast(unsigned opc, llvm::Type *SrcTy, llvm::Type *DstTy) {
+  Out << "/*" << __LINE__ << "*/";
   if (llvm::isa<const llvm::VectorType>(DstTy)) {
       assert(llvm::isa<const llvm::VectorType>(SrcTy));
       switch (opc) {
@@ -1244,6 +1260,7 @@ lGetTypedFunc(const char *base, llvm::Type *matchType, int width) {
 
 // printConstant - The LLVM Constant to C Constant converter.
 void CWriter::printConstant(llvm::Constant *CPV, bool Static) {
+  Out << "/*" << __LINE__ << "*/";
   if (const llvm::ConstantExpr *CE = llvm::dyn_cast<llvm::ConstantExpr>(CPV)) {
     if (llvm::isa<llvm::VectorType>(CPV->getType())) {
         assert(CE->getOpcode() == llvm::Instruction::BitCast);
@@ -1708,6 +1725,7 @@ void CWriter::printConstant(llvm::Constant *CPV, bool Static) {
 // because their operands were casted to the expected type. This function takes
 // care of detecting that case and printing the cast for the ConstantExpr.
 bool CWriter::printConstExprCast(const llvm::ConstantExpr* CE, bool Static) {
+  Out << "/*" << __LINE__ << "*/";
   bool NeedsExplicitCast = false;
   llvm::Type *Ty = CE->getOperand(0)->getType();
   bool TypeIsSigned = false;
@@ -1759,6 +1777,7 @@ bool CWriter::printConstExprCast(const llvm::ConstantExpr* CE, bool Static) {
 //  opcodes that care about sign need to cast their operands to the expected
 //  type before the operation proceeds. This function does the casting.
 void CWriter::printConstantWithCast(llvm::Constant* CPV, unsigned Opcode) {
+  Out << "/*" << __LINE__ << "*/";
 
   // Extract the operand's type, we'll need it.
   llvm::Type* OpTy = CPV->getType();
@@ -1862,6 +1881,7 @@ std::string CWriter::GetValueName(const llvm::Value *Operand) {
 /// writeInstComputationInline - Emit the computation for the specified
 /// instruction inline, with no destination provided.
 void CWriter::writeInstComputationInline(llvm::Instruction &I) {
+  Out << "/* writeInstComputationInline start (" << __LINE__ << ") */";
   // We can't currently support integer types other than 1, 8, 16, 32, 64.
   // Validate this.
   llvm::Type *Ty = I.getType();
@@ -1890,10 +1910,13 @@ void CWriter::writeInstComputationInline(llvm::Instruction &I) {
 
   if (NeedBoolTrunc)
     Out << ")&1)";
+
+  Out << "/* writeInstComputationInline end (" << __LINE__ << ") */";
 }
 
 
 void CWriter::writeOperandInternal(llvm::Value *Operand, bool Static) {
+  Out << "/*" << __LINE__ << "*/";
   if (llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(Operand))
     // Should we inline this instruction to build a tree?
     if (isInlinableInst(*I) && !isDirectAlloca(I)) {
@@ -1912,6 +1935,7 @@ void CWriter::writeOperandInternal(llvm::Value *Operand, bool Static) {
 }
 
 void CWriter::writeOperand(llvm::Value *Operand, bool Static) {
+  Out << "/*" << __LINE__ << "*/";
   bool isAddressImplicit = isAddressExposed(Operand);
   if (isAddressImplicit)
     Out << "(&";  // Global variables are referenced as their addresses by llvm
@@ -1927,6 +1951,7 @@ void CWriter::writeOperand(llvm::Value *Operand, bool Static) {
 // This function takes care of detecting that case and printing the cast
 // for the Instruction.
 bool CWriter::writeInstructionCast(const llvm::Instruction &I) {
+  Out << "/*" << __LINE__ << "*/";
   llvm::Type *Ty = I.getOperand(0)->getType();
   switch (I.getOpcode()) {
   case llvm::Instruction::Add:
@@ -1957,6 +1982,7 @@ bool CWriter::writeInstructionCast(const llvm::Instruction &I) {
 // This will be used in cases where an instruction has specific type
 // requirements (usually signedness) for its operands.
 void CWriter::writeOperandWithCast(llvm::Value* Operand, unsigned Opcode) {
+  Out << "/*" << __LINE__ << "*/";
 
   // Extract the operand's type, we'll need it.
   llvm::Type* OpTy = Operand->getType();
@@ -2009,6 +2035,7 @@ void CWriter::writeOperandWithCast(llvm::Value* Operand, unsigned Opcode) {
 // Write the operand with a cast to another type based on the icmp predicate
 // being used.
 void CWriter::writeOperandWithCast(llvm::Value* Operand, const llvm::ICmpInst &Cmp) {
+  Out << "/*" << __LINE__ << "*/";
   // This has to do a cast to ensure the operand has the right signedness.
   // Also, if the operand is a pointer, we make sure to cast to an integer when
   // doing the comparison both for signedness and so that the C compiler doesn't
@@ -2236,6 +2263,7 @@ static void PrintEscapedString(const std::string &Str, llvm::raw_ostream &Out) {
 }
 
 bool CWriter::doInitialization(llvm::Module &M) {
+  Out << "/*" << __LINE__ << "*/";
   llvm::FunctionPass::doInitialization(M);
 
   // Initialize
@@ -2615,6 +2643,7 @@ bool CWriter::doInitialization(llvm::Module &M) {
 
 /// Output all floating point constants that cannot be printed accurately...
 void CWriter::printFloatingPointConstants(llvm::Function &F) {
+  Out << "/*" << __LINE__ << "*/";
   // Scan the module for floating point constants.  If any FP constant is used
   // in the function, we want to redirect it here so that we do not depend on
   // the precision of the printed form, unless the printed form preserves
@@ -2628,6 +2657,7 @@ void CWriter::printFloatingPointConstants(llvm::Function &F) {
 }
 
 void CWriter::printFloatingPointConstants(const llvm::Constant *C) {
+  Out << "/*" << __LINE__ << "*/";
   // If this is a constant expression, recursively check for constant fp values.
   if (const llvm::ConstantExpr *CE = llvm::dyn_cast<llvm::ConstantExpr>(C)) {
     for (unsigned i = 0, e = CE->getNumOperands(); i != e; ++i)
@@ -2687,6 +2717,7 @@ void CWriter::printFloatingPointConstants(const llvm::Constant *C) {
 // loads to get their values, rather than tediously inserting the
 // individual values into the vector.
 void CWriter::printVectorConstants(llvm::Function &F) {
+  Out << "/*" << __LINE__ << "*/";
     for (llvm::constant_iterator I = constant_begin(&F), E = constant_end(&F);
          I != E; ++I) {
         const llvm::ConstantDataVector *CDV = llvm::dyn_cast<llvm::ConstantDataVector>(*I);
@@ -2720,6 +2751,7 @@ void CWriter::printVectorConstants(llvm::Function &F) {
 /// type name is found, emit its declaration...
 ///
 void CWriter::printModuleTypes() {
+  Out << "/*" << __LINE__ << "*/";
   Out << "\n/* Helper union for bitcasts */\n";
   Out << "typedef union {\n";
   Out << "  unsigned int Int32;\n";
@@ -2732,8 +2764,7 @@ void CWriter::printModuleTypes() {
   std::vector<llvm::StructType*> StructTypes;
   llvm::TypeFinder typeFinder;
   typeFinder.run(*TheModule, false);
-  for (llvm::TypeFinder::iterator iter = typeFinder.begin();
-       iter != typeFinder.end(); ++iter)
+  for (llvm::TypeFinder::iterator iter = typeFinder.begin(); iter != typeFinder.end(); ++iter)
       StructTypes.push_back(*iter);
 
   // Get all of the array types used in the module
@@ -2794,6 +2825,7 @@ void CWriter::printModuleTypes() {
 //
 void CWriter::printContainedStructs(llvm::Type *Ty,
                                     llvm::SmallPtrSet<llvm::Type *, 16> &Printed) {
+  Out << "/*" << __LINE__ << "*/";
   // Don't walk through pointers.
   if (!(Ty->isStructTy() || Ty->isArrayTy()))
     return;
@@ -2829,6 +2861,7 @@ void CWriter::printContainedStructs(llvm::Type *Ty,
 
 void CWriter::printContainedArrays(llvm::ArrayType *ATy,
                                    llvm::SmallPtrSet<llvm::Type *, 16> &Printed) {
+  Out << "/*" << __LINE__ << "*/";
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) && !defined(LLVM_3_5) // LLVM 3.6+
   if (!Printed.insert(ATy).second)
       return;
@@ -2846,6 +2879,7 @@ void CWriter::printContainedArrays(llvm::ArrayType *ATy,
 }
 
 void CWriter::printFunctionSignature(const llvm::Function *F, bool Prototype) {
+  Out << "/*" << __LINE__ << "*/";
   /// isStructReturn - Should this function actually return a struct by-value?
   bool isStructReturn = F->hasStructRetAttr();
 
@@ -3006,6 +3040,7 @@ static inline bool isFPIntBitCast(const llvm::Instruction &I) {
 }
 
 void CWriter::printFunction(llvm::Function &F) {
+  Out << "/*" << __LINE__ << "*/";
   /// isStructReturn - Should this function actually return a struct by-value?
   bool isStructReturn = F.hasStructRetAttr();
 
@@ -3079,6 +3114,7 @@ void CWriter::printFunction(llvm::Function &F) {
 }
 
 void CWriter::printLoop(llvm::Loop *L) {
+  Out << "/*" << __LINE__ << "*/";
   Out << "  do {     /* Syntactic loop '" << L->getHeader()->getName()
       << "' to make GCC happy */\n";
   for (unsigned i = 0, e = L->getBlocks().size(); i != e; ++i) {
@@ -3094,6 +3130,7 @@ void CWriter::printLoop(llvm::Loop *L) {
 }
 
 void CWriter::printBasicBlock(llvm::BasicBlock *BB) {
+  Out << "// printBasicBlock (" << __LINE__ << "): " << GetValueName(BB) << "\n\n";
 
   // Don't print the label for the basic block if there are no uses, or if
   // the only terminator use is the predecessor basic block's terminator.
@@ -3106,7 +3143,7 @@ void CWriter::printBasicBlock(llvm::BasicBlock *BB) {
       NeedsLabel = true;
       break;
     }
-
+    
   if (NeedsLabel) Out << GetValueName(BB) << ": {\n";
 
   // Output all of the instructions in the basic block...
@@ -3133,6 +3170,7 @@ void CWriter::printBasicBlock(llvm::BasicBlock *BB) {
 // necessary because we use the instruction classes as opaque types...
 //
 void CWriter::visitReturnInst(llvm::ReturnInst &I) {
+  Out << "/*" << __LINE__ << "*/";
   // If this is a struct return function, return the temporary struct.
   bool isStructReturn = I.getParent()->getParent()->hasStructRetAttr();
 
@@ -3157,6 +3195,7 @@ void CWriter::visitReturnInst(llvm::ReturnInst &I) {
 }
 
 void CWriter::visitSwitchInst(llvm::SwitchInst &SI) {
+  Out << "/*" << __LINE__ << "*/";
 
   llvm::Value* Cond = SI.getCondition();
 
@@ -3188,16 +3227,19 @@ void CWriter::visitSwitchInst(llvm::SwitchInst &SI) {
 }
 
 void CWriter::visitIndirectBrInst(llvm::IndirectBrInst &IBI) {
+  Out << "/*" << __LINE__ << "*/";
   Out << "  goto *(void*)(";
   writeOperand(IBI.getOperand(0));
   Out << ");\n";
 }
 
 void CWriter::visitUnreachableInst(llvm::UnreachableInst &I) {
+  Out << "/*" << __LINE__ << "*/";
   Out << "  /*UNREACHABLE*/;\n";
 }
 
 bool CWriter::isGotoCodeNecessary(llvm::BasicBlock *From, llvm::BasicBlock *To) {
+  Out << "/*" << __LINE__ << "*/";
   /// FIXME: This should be reenabled, but loop reordering safe!!
   return true;
 
@@ -3218,6 +3260,7 @@ bool CWriter::isGotoCodeNecessary(llvm::BasicBlock *From, llvm::BasicBlock *To) 
 void CWriter::printPHICopiesForSuccessor (llvm::BasicBlock *CurBlock,
                                           llvm::BasicBlock *Successor,
                                           unsigned Indent) {
+  Out << "/*" << __LINE__ << "*/";
   for (llvm::BasicBlock::iterator I = Successor->begin(); llvm::isa<llvm::PHINode>(I); ++I) {
     llvm::PHINode *PN = llvm::cast<llvm::PHINode>(I);
     // Now we have to do the printing.
@@ -3233,6 +3276,7 @@ void CWriter::printPHICopiesForSuccessor (llvm::BasicBlock *CurBlock,
 
 void CWriter::printBranchToBlock(llvm::BasicBlock *CurBB, llvm::BasicBlock *Succ,
                                  unsigned Indent) {
+  Out << "/*" << __LINE__ << "*/";
   if (isGotoCodeNecessary(CurBB, Succ)) {
     Out << std::string(Indent, ' ') << "  goto ";
     writeOperand(Succ);
@@ -3244,6 +3288,7 @@ void CWriter::printBranchToBlock(llvm::BasicBlock *CurBB, llvm::BasicBlock *Succ
 // that immediately succeeds the current one.
 //
 void CWriter::visitBranchInst(llvm::BranchInst &I) {
+  Out << "/*" << __LINE__ << "*/";
 
   if (I.isConditional()) {
     if (isGotoCodeNecessary(I.getParent(), I.getSuccessor(0))) {
@@ -3281,12 +3326,14 @@ void CWriter::visitBranchInst(llvm::BranchInst &I) {
 // blocks.  We now need to copy these temporary values into the REAL value for
 // the PHI.
 void CWriter::visitPHINode(llvm::PHINode &I) {
+  Out << "/*" << __LINE__ << "*/";
   writeOperand(&I);
   Out << "__PHI";
 }
 
 
 void CWriter::visitBinaryOperator(llvm::Instruction &I) {
+  Out << "/*" << __LINE__ << "*/";
   // binary instructions, shift instructions, setCond instructions.
   assert(!I.getType()->isPointerTy());
 
@@ -3484,6 +3531,7 @@ lTypeToSuffix(llvm::Type *t) {
 
 
 void CWriter::visitICmpInst(llvm::ICmpInst &I) {
+  Out << "/*" << __LINE__ << "*/";
   bool isVector = llvm::isa<llvm::VectorType>(I.getOperand(0)->getType());
 
   if (isVector) {
@@ -3531,6 +3579,7 @@ void CWriter::visitICmpInst(llvm::ICmpInst &I) {
 }
 
 void CWriter::visitFCmpInst(llvm::FCmpInst &I) {
+  Out << "/*" << __LINE__ << "*/";
   bool isVector = llvm::isa<llvm::VectorType>(I.getOperand(0)->getType());
 
   if (I.getPredicate() == llvm::FCmpInst::FCMP_FALSE) {
@@ -3608,6 +3657,7 @@ static const char * getFloatBitCastField(llvm::Type *Ty) {
 }
 
 void CWriter::visitCastInst(llvm::CastInst &I) {
+  Out << "/*" << __LINE__ << "*/";
   llvm::Type *DstTy = I.getType();
   llvm::Type *SrcTy = I.getOperand(0)->getType();
   if (isFPIntBitCast(I)) {
@@ -3646,6 +3696,7 @@ void CWriter::visitCastInst(llvm::CastInst &I) {
 }
 
 void CWriter::visitSelectInst(llvm::SelectInst &I) {
+  Out << "/*" << __LINE__ << "*/";
   if (llvm::isa<llvm::VectorType>(I.getType())) {
       Out << "__select(";
       writeOperand(I.getCondition());
@@ -3701,6 +3752,8 @@ static bool isSupportedIntegerSize(llvm::IntegerType &T) {
 #endif
 
 void CWriter::printIntrinsicDefinition(const llvm::Function &F, llvm::raw_ostream &Out) {
+  Out << "/*" << __LINE__ << "*/";
+  Out << "// printIntrinsicDefinition - start\n";
   llvm::FunctionType *funT = F.getFunctionType();
   llvm::Type *retT = F.getReturnType();
   llvm::IntegerType *elemT = llvm::cast<llvm::IntegerType>(funT->getParamType(1));
@@ -3762,9 +3815,11 @@ void CWriter::printIntrinsicDefinition(const llvm::Function &F, llvm::raw_ostrea
     Out << "  return r;\n}\n";
     break;
   }
+  Out << "// printIntrinsicDefinition - end\n";
 }
 
 void CWriter::lowerIntrinsics(llvm::Function &F) {
+  Out << "/*" << __LINE__ << "*/";
   // This is used to keep track of intrinsics that get generated to a lowered
   // function. We must generate the prototypes before the function body which
   // will only be expanded on first use (by the loop below).
@@ -3857,6 +3912,7 @@ void CWriter::lowerIntrinsics(llvm::Function &F) {
 }
 
 void CWriter::visitCallInst(llvm::CallInst &I) {
+  Out << "/*" << __LINE__ << "*/";
   if (llvm::isa<llvm::InlineAsm>(I.getCalledValue()))
     return visitInlineAsm(I);
 
@@ -3994,6 +4050,7 @@ void CWriter::visitCallInst(llvm::CallInst &I) {
 /// optionally set 'WroteCallee' if the callee has already been printed out.
 bool CWriter::visitBuiltinCall(llvm::CallInst &I, llvm::Intrinsic::ID ID,
                                bool &WroteCallee) {
+  Out << "/*" << __LINE__ << "*/";
   switch (ID) {
   default: {
     // If this is an intrinsic that directly corresponds to a GCC
@@ -4162,6 +4219,7 @@ bool CWriter::visitBuiltinCall(llvm::CallInst &I, llvm::Intrinsic::ID ID,
 //TODO: assumptions about what consume arguments from the call are likely wrong
 //      handle communitivity
 void CWriter::visitInlineAsm(llvm::CallInst &CI) {
+  Out << "/*" << __LINE__ << "*/";
   assert(!"Inline assembly not supported");
 }
 
@@ -4180,10 +4238,13 @@ void CWriter::visitAllocaInst(llvm::AllocaInst &I) {
 
 void CWriter::printGEPExpression(llvm::Value *Ptr, llvm::gep_type_iterator I,
                                  llvm::gep_type_iterator E, bool Static) {
+  Out << "/*" << __LINE__ << "*/";
+  Out << "// printGEPExpression - start\n";
 
   // If there are no indices, just print out the pointer.
   if (I == E) {
     writeOperand(Ptr);
+    Out << "// printGEPExpression - end\n";
     return;
   }
 
@@ -4261,10 +4322,12 @@ void CWriter::printGEPExpression(llvm::Value *Ptr, llvm::gep_type_iterator I,
     }
   }
   Out << ")";
+  Out << "// printGEPExpression - end\n";
 }
 
 void CWriter::writeMemoryAccess(llvm::Value *Operand, llvm::Type *OperandType,
                                 bool IsVolatile, unsigned Alignment) {
+  Out << "/*" << __LINE__ << "*/";
   assert(!llvm::isa<llvm::VectorType>(OperandType));
   bool IsUnaligned = Alignment &&
     Alignment < TD->getABITypeAlignment(OperandType);
@@ -4294,6 +4357,7 @@ void CWriter::writeMemoryAccess(llvm::Value *Operand, llvm::Type *OperandType,
 }
 
 void CWriter::visitLoadInst(llvm::LoadInst &I) {
+  Out << "/*" << __LINE__ << "*/";
   llvm::VectorType *VT = llvm::dyn_cast<llvm::VectorType>(I.getType());
   if (VT != NULL) {
       Out << "__load<" << I.getAlignment() << ">(";
@@ -4307,6 +4371,7 @@ void CWriter::visitLoadInst(llvm::LoadInst &I) {
 }
 
 void CWriter::visitStoreInst(llvm::StoreInst &I) {
+  Out << "/*" << __LINE__ << "*/";
   llvm::VectorType *VT = llvm::dyn_cast<llvm::VectorType>(I.getOperand(0)->getType());
   if (VT != NULL) {
       Out << "__store<" << I.getAlignment() << ">(";
@@ -4338,11 +4403,13 @@ void CWriter::visitStoreInst(llvm::StoreInst &I) {
 }
 
 void CWriter::visitGetElementPtrInst(llvm::GetElementPtrInst &I) {
+  Out << "/*" << __LINE__ << "*/";
   printGEPExpression(I.getPointerOperand(), gep_type_begin(I),
                      gep_type_end(I), false);
 }
 
 void CWriter::visitVAArgInst(llvm::VAArgInst &I) {
+  Out << "/*" << __LINE__ << "*/";
   Out << "va_arg(*(va_list*)";
   writeOperand(I.getOperand(0));
   Out << ", ";
@@ -4351,6 +4418,7 @@ void CWriter::visitVAArgInst(llvm::VAArgInst &I) {
 }
 
 void CWriter::visitInsertElementInst(llvm::InsertElementInst &I) {
+  Out << "/*" << __LINE__ << "*/";
 #if 0
   Type *EltTy = I.getType()->getElementType();
   writeOperand(I.getOperand(0));
@@ -4374,6 +4442,7 @@ void CWriter::visitInsertElementInst(llvm::InsertElementInst &I) {
 }
 
 void CWriter::visitExtractElementInst(llvm::ExtractElementInst &I) {
+  Out << "/*" << __LINE__ << "*/";
   // We know that our operand is not inlined.
 #if 0
   Out << "((";
@@ -4393,6 +4462,7 @@ void CWriter::visitExtractElementInst(llvm::ExtractElementInst &I) {
 }
 
 void CWriter::visitShuffleVectorInst(llvm::ShuffleVectorInst &SVI) {
+  Out << "/*" << __LINE__ << "*/";
   printType(Out, SVI.getType());
   Out << "(";
   llvm::VectorType *VT = SVI.getType();
@@ -4429,6 +4499,8 @@ void CWriter::visitShuffleVectorInst(llvm::ShuffleVectorInst &SVI) {
 }
 
 void CWriter::visitInsertValueInst(llvm::InsertValueInst &IVI) {
+  Out << "/*" << __LINE__ << "*/";
+  Out << "/* visitInsertValueInst - start */";
   // Start by copying the entire aggregate value into the result variable.
   writeOperand(IVI.getOperand(0));
   Out << ";\n  ";
@@ -4447,9 +4519,11 @@ void CWriter::visitInsertValueInst(llvm::InsertValueInst &IVI) {
   }
   Out << " = ";
   writeOperand(IVI.getOperand(1));
+  Out << "/* visitInsertValueInst - end */";
 }
 
 void CWriter::visitExtractValueInst(llvm::ExtractValueInst &EVI) {
+  Out << "/* visitExtractValueInst - start */";
   Out << "(";
   if (llvm::isa<llvm::UndefValue>(EVI.getOperand(0))) {
     // FIXME: need to handle these--a 0 initializer won't do...
@@ -4459,6 +4533,7 @@ void CWriter::visitExtractValueInst(llvm::ExtractValueInst &EVI) {
     Out << ") 0/*UNDEF*/";
   } else {
     Out << GetValueName(EVI.getOperand(0));
+    Out << "/* {" << GetValueName(EVI.getOperand(0)) << "} */";
     for (const unsigned *b = EVI.idx_begin(), *i = b, *e = EVI.idx_end();
          i != e; ++i) {
       llvm::Type *IndexedTy = (b == i) ? EVI.getOperand(0)->getType() :
@@ -4471,9 +4546,13 @@ void CWriter::visitExtractValueInst(llvm::ExtractValueInst &EVI) {
     }
   }
   Out << ")";
+
+  Out << "/* visitExtractValueInst - end */";
 }
 
 void CWriter::visitAtomicRMWInst(llvm::AtomicRMWInst &AI) {
+  Out << "/*" << __LINE__ << "*/";
+    Out << "/* visitExtractValueInst - start */";
     Out << "(";
     Out << "__atomic_";
     switch (AI.getOperation()) {
@@ -4498,6 +4577,7 @@ void CWriter::visitAtomicRMWInst(llvm::AtomicRMWInst &AI) {
 }
 
 void CWriter::visitAtomicCmpXchgInst(llvm::AtomicCmpXchgInst &ACXI) {
+  Out << "/*" << __LINE__ << "*/";
     Out << "(";
     Out << "__atomic_cmpxchg(";
     writeOperand(ACXI.getPointerOperand());
@@ -4996,32 +5076,12 @@ bool
 WriteCXXFile(llvm::Module *module, const char *fn, int vectorWidth,
              const char *includeName) {
     llvm::PassManager pm;
-#if 0
-    if (const llvm::TargetData *td = targetMachine->getTargetData())
-        pm.add(new llvm::TargetData(*td));
-    else
-        pm.add(new llvm::TargetData(module));
-#endif
-
-#if defined(LLVM_3_2) || defined(LLVM_3_3)
-    int flags = 0;
-#else
     llvm::sys::fs::OpenFlags flags = llvm::sys::fs::F_None;
-#endif
-
-#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5)
-    std::string error;
-#else // LLVM 3.6+
     std::error_code error;
-#endif
 
-    llvm::tool_output_file *of = new llvm::tool_output_file(fn, error, flags);
-
-#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5)
-    if (error.size()) {
-#else // LLVM 3.6+
+    //llvm::tool_output_file *of = new llvm::tool_output_file("/dev/tty", error, flags);
+    llvm::tool_output_file *of = new llvm::tool_output_file("test.cpp", error, flags);
     if (error) {
-#endif
         fprintf(stderr, "Error opening output file \"%s\".\n", fn);
         return false;
     }
@@ -5036,15 +5096,12 @@ WriteCXXFile(llvm::Module *module, const char *fn, int vectorWidth,
     pm.add(new AndCmpCleanupPass());
     pm.add(new MaskOpsCleanupPass(module));
     pm.add(llvm::createDeadCodeEliminationPass()); // clean up after smear pass
-//CO    pm.add(llvm::createPrintModulePass(&fos));
+    //pm.add(llvm::createPrintModulePass(fos));
+    
     pm.add(new CWriter(fos, includeName, vectorWidth));
-#if defined(LLVM_3_2)
-    // This interface is depricated for 3.3+
-    pm.add(llvm::createGCInfoDeleter());
-#endif
-//CO    pm.add(llvm::createVerifierPass());
+
+    //pm.add(llvm::createVerifierPass());
 
     pm.run(*module);
-
     return true;
 }

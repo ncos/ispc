@@ -599,9 +599,7 @@ namespace {
     void visitAtomicCmpXchgInst(llvm::AtomicCmpXchgInst &I);
 
     void visitInstruction(llvm::Instruction &I) {
-#ifndef NDEBUG
       llvm::errs() << "C Writer does not know about " << I;
-#endif
       llvm_unreachable(0);
     }
 
@@ -3065,6 +3063,10 @@ void CWriter::printFunction(llvm::Function &F) {
 
   // print local variable information for the function
   for (llvm::inst_iterator I = inst_begin(&F), E = inst_end(&F); I != E; ++I) {
+    Out << "//" << GetValueName(&*I) << " <----- \n";
+  }
+
+  for (llvm::inst_iterator I = inst_begin(&F), E = inst_end(&F); I != E; ++I) {
       if (const llvm::AllocaInst *AI = isDirectAlloca(&*I)) {
       Out << "  ";
       printType(Out, AI->getAllocatedType(), false, GetValueName(AI));
@@ -3101,6 +3103,10 @@ void CWriter::printFunction(llvm::Function &F) {
     Out << "  CODE_FOR_MAIN();\n";
 
   // print the basic blocks
+  for (llvm::Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
+    Out << "    //" << GetValueName(BB) << "\n";
+  }
+
   for (llvm::Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
     if (llvm::Loop *L = LI->getLoopFor(BB)) {
       if (L->getHeader() == BB && L->getParentLoop() == 0)
@@ -3145,10 +3151,23 @@ void CWriter::printBasicBlock(llvm::BasicBlock *BB) {
     }
     
   if (NeedsLabel) Out << GetValueName(BB) << ": {\n";
+  
+  Out << "/*-----------------------\n";
+  for (llvm::BasicBlock::iterator II = BB->begin(), E = --BB->end(); II != E; ++II) {
+    Out << GetValueName(II) << "(isInlinableInst = " << isInlinableInst(*II) << ")"
+                            << "(isDirectAlloca = "  << isDirectAlloca(II)   << ")"
+                            << "(1st if = "  << (II->getType() != llvm::Type::getVoidTy(BB->getContext()) && !isInlineAsm(*II)) << ")";
+    outputLValue(II);
+    writeInstComputationInline(*II);
+
+    Out << "\n\n";
+  }
+  Out << "-----------------------*/\n";
+
 
   // Output all of the instructions in the basic block...
-  for (llvm::BasicBlock::iterator II = BB->begin(), E = --BB->end(); II != E;
-       ++II) {
+  for (llvm::BasicBlock::iterator II = BB->begin(), E = --BB->end(); II != E; ++II) {
+
     if (!isInlinableInst(*II) && !isDirectAlloca(II)) {
       if (II->getType() != llvm::Type::getVoidTy(BB->getContext()) &&
           !isInlineAsm(*II))
@@ -3913,8 +3932,10 @@ void CWriter::lowerIntrinsics(llvm::Function &F) {
 
 void CWriter::visitCallInst(llvm::CallInst &I) {
   Out << "/*" << __LINE__ << "*/";
-  if (llvm::isa<llvm::InlineAsm>(I.getCalledValue()))
+  Out << "\n";
+  if (llvm::isa<llvm::InlineAsm>(I.getCalledValue())){
     return visitInlineAsm(I);
+  }
 
   bool WroteCallee = false;
 
@@ -3946,6 +3967,7 @@ void CWriter::visitCallInst(llvm::CallInst &I) {
   if (I.isTailCall()) Out << " /*tail*/ ";
 
   if (!WroteCallee) {
+    Out << "\t!WroteCallee\n";
     // If this is an indirect call to a struct return function, we need to cast
     // the pointer. Ditto for indirect calls with byval arguments.
     bool NeedsCast = (hasByVal || isStructRet) && !llvm::isa<llvm::Function>(Callee);
@@ -4038,6 +4060,7 @@ void CWriter::visitCallInst(llvm::CallInst &I) {
       writeOperandDeref(*AI);
     }
     else {
+      Out << "\tNot by value\n";
       writeOperand(*AI);
     }
     PrintedArg = true;

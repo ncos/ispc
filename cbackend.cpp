@@ -827,6 +827,7 @@ llvm::raw_ostream &CWriter::printType(llvm::raw_ostream &Out, llvm::Type *Ty,
 
   switch (Ty->getTypeID()) {
   case llvm::Type::FunctionTyID: {
+    Out << "/*" << __LINE__ << "*/";
     llvm::FunctionType *FTy = llvm::cast<llvm::FunctionType>(Ty);
     std::string tstr;
     llvm::raw_string_ostream FunctionInnards(tstr);
@@ -872,6 +873,7 @@ llvm::raw_ostream &CWriter::printType(llvm::raw_ostream &Out, llvm::Type *Ty,
     return Out;
   }
   case llvm::Type::StructTyID: {
+    Out << "/*" << __LINE__ << "*/";
     llvm::StructType *STy = llvm::cast<llvm::StructType>(Ty);
 
     // Check to see if the type is named.
@@ -920,6 +922,7 @@ llvm::raw_ostream &CWriter::printType(llvm::raw_ostream &Out, llvm::Type *Ty,
   }
 
   case llvm::Type::PointerTyID: {
+    Out << "/*" << __LINE__ << "*/";
     llvm::PointerType *PTy = llvm::cast<llvm::PointerType>(Ty);
     std::string ptrName = "*" + NameSoFar;
 
@@ -934,6 +937,7 @@ llvm::raw_ostream &CWriter::printType(llvm::raw_ostream &Out, llvm::Type *Ty,
   }
 
   case llvm::Type::ArrayTyID: {
+    Out << "/*" << __LINE__ << "*/";
     llvm::ArrayType *ATy = llvm::cast<llvm::ArrayType>(Ty);
 
     // Check to see if the type is named.
@@ -1904,6 +1908,8 @@ void CWriter::writeInstComputationInline(llvm::Instruction &I) {
   if (NeedBoolTrunc)
     Out << "((";
 
+
+  //Out << "\n\ttree = " << I << "\n";
   visit(I);
 
   if (NeedBoolTrunc)
@@ -1918,9 +1924,7 @@ void CWriter::writeOperandInternal(llvm::Value *Operand, bool Static) {
   if (llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(Operand))
     // Should we inline this instruction to build a tree?
     if (isInlinableInst(*I) && !isDirectAlloca(I)) {
-      Out << '(';
       writeInstComputationInline(*I);
-      Out << ')';
       return;
     }
 
@@ -3063,10 +3067,6 @@ void CWriter::printFunction(llvm::Function &F) {
 
   // print local variable information for the function
   for (llvm::inst_iterator I = inst_begin(&F), E = inst_end(&F); I != E; ++I) {
-    Out << "//" << GetValueName(&*I) << " <----- \n";
-  }
-
-  for (llvm::inst_iterator I = inst_begin(&F), E = inst_end(&F); I != E; ++I) {
       if (const llvm::AllocaInst *AI = isDirectAlloca(&*I)) {
       Out << "  ";
       printType(Out, AI->getAllocatedType(), false, GetValueName(AI));
@@ -3152,17 +3152,17 @@ void CWriter::printBasicBlock(llvm::BasicBlock *BB) {
     
   if (NeedsLabel) Out << GetValueName(BB) << ": {\n";
   
-  Out << "/*-----------------------\n";
-  for (llvm::BasicBlock::iterator II = BB->begin(), E = --BB->end(); II != E; ++II) {
-    Out << GetValueName(II) << "(isInlinableInst = " << isInlinableInst(*II) << ")"
-                            << "(isDirectAlloca = "  << isDirectAlloca(II)   << ")"
-                            << "(1st if = "  << (II->getType() != llvm::Type::getVoidTy(BB->getContext()) && !isInlineAsm(*II)) << ")";
-    outputLValue(II);
-    writeInstComputationInline(*II);
-
-    Out << "\n\n";
-  }
-  Out << "-----------------------*/\n";
+  //Out << "/*-----------------------\n";
+  //for (llvm::BasicBlock::iterator II = BB->begin(), E = --BB->end(); II != E; ++II) {
+  //  Out << GetValueName(II) << "(isInlinableInst = " << isInlinableInst(*II) << ")"
+  //                          << "(isDirectAlloca = "  << isDirectAlloca(II)   << ")"
+  //                          << "(1st if = "  << (II->getType() != llvm::Type::getVoidTy(BB->getContext()) && !isInlineAsm(*II)) << ")";
+  //  outputLValue(II);
+  //  writeInstComputationInline(*II);
+  //
+  //  Out << "\n\n";
+  //}
+  //Out << "-----------------------*/\n";
 
 
   // Output all of the instructions in the basic block...
@@ -3967,7 +3967,6 @@ void CWriter::visitCallInst(llvm::CallInst &I) {
   if (I.isTailCall()) Out << " /*tail*/ ";
 
   if (!WroteCallee) {
-    Out << "\t!WroteCallee\n";
     // If this is an indirect call to a struct return function, we need to cast
     // the pointer. Ditto for indirect calls with byval arguments.
     bool NeedsCast = (hasByVal || isStructRet) && !llvm::isa<llvm::Function>(Callee);
@@ -4060,7 +4059,6 @@ void CWriter::visitCallInst(llvm::CallInst &I) {
       writeOperandDeref(*AI);
     }
     else {
-      Out << "\tNot by value\n";
       writeOperand(*AI);
     }
     PrintedArg = true;
@@ -4561,8 +4559,8 @@ void CWriter::visitExtractValueInst(llvm::ExtractValueInst &EVI) {
     printType(Out, EVI.getType());
     Out << ") 0/*UNDEF*/";
   } else {
-    Out << GetValueName(EVI.getOperand(0));
-    Out << "/* {" << GetValueName(EVI.getOperand(0)) << "} */";
+    //Out << GetValueName(EVI.getOperand(0));
+    writeOperand(EVI.getOperand(0));
     for (const unsigned *b = EVI.idx_begin(), *i = b, *e = EVI.idx_end();
          i != e; ++i) {
       llvm::Type *IndexedTy = (b == i) ? EVI.getOperand(0)->getType() :
@@ -5108,8 +5106,8 @@ WriteCXXFile(llvm::Module *module, const char *fn, int vectorWidth,
     llvm::sys::fs::OpenFlags flags = llvm::sys::fs::F_None;
     std::error_code error;
 
-    //llvm::tool_output_file *of = new llvm::tool_output_file("/dev/tty", error, flags);
-    llvm::tool_output_file *of = new llvm::tool_output_file("test.cpp", error, flags);
+    llvm::tool_output_file *of = new llvm::tool_output_file(fn, error, flags);
+    //llvm::tool_output_file *of = new llvm::tool_output_file("test.cpp", error, flags);
     if (error) {
         fprintf(stderr, "Error opening output file \"%s\".\n", fn);
         return false;

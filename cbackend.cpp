@@ -504,6 +504,10 @@ namespace {
         if (llvm::isa<llvm::CmpInst>(I) && llvm::isa<llvm::VectorType>(I.getType()) == false)
           return true;
 
+        // This instruction returns a struct, which can not be inlined
+        if (llvm::isa<llvm::AtomicCmpXchgInst>(I))
+          return false;
+
       // Must be an expression, must be used exactly once.  If it is dead, we
       // emit it inline where it would go.
       if (I.getType() == llvm::Type::getVoidTy(I.getContext()) || !I.hasOneUse() ||
@@ -4559,8 +4563,8 @@ void CWriter::visitExtractValueInst(llvm::ExtractValueInst &EVI) {
     printType(Out, EVI.getType());
     Out << ") 0/*UNDEF*/";
   } else {
-    //Out << GetValueName(EVI.getOperand(0));
-    writeOperand(EVI.getOperand(0));
+    Out << GetValueName(EVI.getOperand(0));
+    //writeOperand(EVI.getOperand(0));
     for (const unsigned *b = EVI.idx_begin(), *i = b, *e = EVI.idx_end();
          i != e; ++i) {
       llvm::Type *IndexedTy = (b == i) ? EVI.getOperand(0)->getType() :
@@ -4605,14 +4609,20 @@ void CWriter::visitAtomicRMWInst(llvm::AtomicRMWInst &AI) {
 
 void CWriter::visitAtomicCmpXchgInst(llvm::AtomicCmpXchgInst &ACXI) {
   Out << "/*" << __LINE__ << "*/";
-    Out << "(";
+    printType(Out, ACXI.getType(), false);
+
+    Out << "::init(";
     Out << "__atomic_cmpxchg(";
+
+
     writeOperand(ACXI.getPointerOperand());
     Out << ", ";
     writeOperand(ACXI.getCompareOperand());
     Out << ", ";
     writeOperand(ACXI.getNewValOperand());
-    Out << "))";
+    Out << "), ";
+    Out << "true";
+    Out << ")";
 }
 
 ///////////////////////////////////////////////////////////////////////////

@@ -16,6 +16,7 @@
 #include "module.h"
 
 #include <stdio.h>
+#include <iostream>
 
 #ifndef _MSC_VER
 #include <inttypes.h>
@@ -3695,8 +3696,14 @@ void CWriter::visitCastInst(llvm::CastInst &I) {
     return;
   }
 
+  if ((llvm::isa<llvm::VectorType>(DstTy)) && (!llvm::isa<llvm::VectorType>(SrcTy))) {
+
+    writeOperand(I.getOperand(0));//GetValueName(I.getOperand(0));
+    return;
+  }
+
   Out << '(';
-  bool closeParen = printCast(I.getOpcode(), SrcTy, DstTy);
+  bool closeParen = printCast(I.getOpcode(), SrcTy, DstTy);          
 
   // Make a sext from i1 work by subtracting the i1 from 0 (an int).
   if (SrcTy == llvm::Type::getInt1Ty(I.getContext()) &&
@@ -4818,7 +4825,7 @@ BitcastCleanupPass::runOnBasicBlock(llvm::BasicBlock &bb) {
         llvm::BitCastInst *bc = llvm::dyn_cast<llvm::BitCastInst>(&*iter);
         if (bc == NULL)
             continue;
-
+        bc->dump();
         // We only care about bitcasts from integer types to vector types
         if (!llvm::isa<llvm::VectorType>(bc->getType()))
             continue;
@@ -4827,15 +4834,24 @@ BitcastCleanupPass::runOnBasicBlock(llvm::BasicBlock &bb) {
         if (llvm::isa<llvm::VectorType>(Op->getType()))
             continue;
 
-        llvm::BitCastInst *opBc = llvm::dyn_cast<llvm::BitCastInst>(Op);
-        if (opBc == NULL) Op->dump();
-        assert(opBc != NULL);
+        std::cout << "Hello, World!\n";
 
-        assert(llvm::isa<llvm::VectorType>(opBc->getOperand(0)->getType()));
-        llvm::Instruction *newBitCast = new llvm::BitCastInst(opBc->getOperand(0), bc->getType(),
-                                                  "replacement_bc", (llvm::Instruction *)NULL);
-        ReplaceInstWithInst(iter, newBitCast);
-        modifiedAny = true;
+        //llvm::BitCastInst *opBc = llvm::dyn_cast<llvm::BitCastInst>(Op);
+        //if (opBc == NULL) Op->dump();
+        //assert(opBc != NULL);
+
+        //assert(llvm::isa<llvm::VectorType>(opBc->getOperand(0)->getType()));
+        //llvm::Instruction *newBitCast = new llvm::BitCastInst(opBc->getOperand(0), bc->getType(),
+        //                                          "replacement_bc", (llvm::Instruction *)NULL);
+        
+        
+        llvm::Instruction *opBc = llvm::dyn_cast<llvm::Instruction >(Op);
+        //ReplaceInstWithInst(iter, newBitCast);
+        
+        assert(opBc != NULL);
+        ReplaceInstWithInst(iter, opBc);
+        
+        
         goto restart;
     }
     return modifiedAny;
@@ -5117,7 +5133,7 @@ WriteCXXFile(llvm::Module *module, const char *fn, int vectorWidth,
     std::error_code error;
 
     llvm::tool_output_file *of = new llvm::tool_output_file(fn, error, flags);
-    //llvm::tool_output_file *of = new llvm::tool_output_file("test.cpp", error, flags);
+    //llvm::tool_output_file *of = new llvm::tool_output_file("/dev/tty", error, flags);
     if (error) {
         fprintf(stderr, "Error opening output file \"%s\".\n", fn);
         return false;
@@ -5129,7 +5145,7 @@ WriteCXXFile(llvm::Module *module, const char *fn, int vectorWidth,
     pm.add(llvm::createLowerInvokePass());
     pm.add(llvm::createCFGSimplificationPass());   // clean up after lower invoke.
     pm.add(new SmearCleanupPass(module, vectorWidth));
-    pm.add(new BitcastCleanupPass());
+    //pm.add(new BitcastCleanupPass());
     pm.add(new AndCmpCleanupPass());
     pm.add(new MaskOpsCleanupPass(module));
     pm.add(llvm::createDeadCodeEliminationPass()); // clean up after smear pass

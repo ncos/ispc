@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-#  Copyright (c) 2013, Intel Corporation
+#  Copyright (c) 2013-2015, Intel Corporation
 #  All rights reserved.
 # 
 #  Redistribution and use in source and binary forms, with or without
@@ -194,8 +194,8 @@ def run_test(testname):
 
         # We need to figure out the signature of the test
         # function that this test has.
-        sig2def = { "f_v(" : 0, "f_f(" : 1, "f_fu(" : 2, "f_fi(" : 3, 
-                    "f_du(" : 4, "f_duf(" : 5, "f_di(" : 6 }
+        sig2def = { "f_v(" : 0, "f_f(" : 1, "f_fu(" : 2, "f_fi(" : 3,
+                    "f_du(" : 4, "f_duf(" : 5, "f_di(" : 6, "f_sz" : 7 }
         file = open(filename, 'r')
         match = -1
         for line in file:
@@ -310,16 +310,16 @@ def run_test(testname):
                   ispc_cmd = ispc_exe_rel + " --woff %s -o %s -O3 --emit-asm --target=%s" % \
                          (filename4ptx, obj_name, options.target)
 
-
-             
-
         # compile the ispc code, make the executable, and run it...
+        ispc_cmd += " -h " + filename + ".h"
+        cc_cmd += " -DTEST_HEADER=<" + filename + ".h>"
         (compile_error, run_error) = run_cmds([ispc_cmd, cc_cmd], 
                                               options.wrapexe + " " + exe_name, \
                                               testname, should_fail)
 
         # clean up after running the test
         try:
+            os.unlink(filename + ".h")
             if not options.save_bin:
                 if not run_error:
                     os.unlink(exe_name)
@@ -349,8 +349,9 @@ def run_tasks_from_queue(queue, queue_ret, queue_error, queue_finish, total_test
     global is_generic_target
     is_generic_target = glob_var[4]
     global is_nvptx_target
+    is_nvptx_target = glob_var[5]
     global run_tests_log
-    run_tests_log = glob_var[5]    
+    run_tests_log = glob_var[6]
 
     if is_windows:
         tmpdir = "tmp%d" % os.getpid()
@@ -540,7 +541,7 @@ def verify():
     f_lines = f.readlines()
     f.close()
     check = [["g++", "clang++", "cl"],["-O0", "-O2"],["x86","x86-64"],
-             ["Linux","Windows","Mac"],["LLVM 3.2","LLVM 3.3","LLVM 3.4","LLVM 3.5","LLVM trunk"],
+             ["Linux","Windows","Mac"],["LLVM 3.2","LLVM 3.3","LLVM 3.4","LLVM 3.5","LLVM 3.6","LLVM trunk"],
              ["sse2-i32x4", "sse2-i32x8", "sse4-i32x4", "sse4-i32x8", "sse4-i16x8",
               "sse4-i8x16", "avx1-i32x4" "avx1-i32x8", "avx1-i32x16", "avx1-i64x4", "avx1.1-i32x8",
               "avx1.1-i32x16", "avx1.1-i64x4", "avx2-i32x8", "avx2-i32x16", "avx2-i64x4",
@@ -769,7 +770,7 @@ def run_tests(options1, args, print_version):
 
     start_time = time.time()
     # launch jobs to run tests
-    glob_var = [is_windows, options, s, ispc_exe, is_generic_target, run_tests_log]
+    glob_var = [is_windows, options, s, ispc_exe, is_generic_target, is_nvptx_target, run_tests_log]
     global task_threads
     task_threads = [0] * nthreads
     for x in range(nthreads):

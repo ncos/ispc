@@ -1,6 +1,6 @@
 // -*- mode: c++ -*-
 /*
-   Copyright (c) 2014, Evghenii Gaburov
+   Copyright (c) 2014-2015, Evghenii Gaburov
    All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,8 @@ met:
 #include <sstream>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include "GPUTargets.h"
 
 #include <nvvm.h>
 #include <sys/stat.h>
@@ -51,47 +53,51 @@ met:
 template<typename T>
 static std::string lValueToString(const T& value)
 {
-  std::ostringstream oss;
-  oss << value;
-  return oss.str();
+  return std::to_string(value);
 }
 
-typedef struct stat Stat;
-
-
-#define PTXGENStatus int
-enum {
-  PTXGEN_SUCCESS                    = 0x0000,
-  PTXGEN_FILE_IO_ERROR              = 0x0001,
-  PTXGEN_BAD_ALLOC_ERROR            = 0x0002,
-  PTXGEN_LIBNVVM_COMPILATION_ERROR  = 0x0004,
-  PTXGEN_LIBNVVM_ERROR              = 0x0008,
-  PTXGEN_INVALID_USAGE              = 0x0010,
-  PTXGEN_LIBNVVM_HOME_UNDEFINED     = 0x0020,
-  PTXGEN_LIBNVVM_VERIFICATION_ERROR = 0x0040
+struct Exception : public std::exception
+{
+  std::string s;
+  Exception(std::string ss) : s(ss) {}
+  ~Exception() throw () {} // Updated
+  const char* what() const throw() { return s.c_str(); }
+};
+  
+struct NVVMProg
+{
+  nvvmProgram prog;
+  NVVMProg() 
+  {
+    if (nvvmCreateProgram(&prog) != NVVM_SUCCESS) 
+      throw Exception(std::string("Failed to create the compilation unit."));
+  }
+  ~NVVMProg() {  nvvmDestroyProgram(&prog); }
+  nvvmProgram get() const {return prog; }
 };
 
-static PTXGENStatus getLibDeviceName(const int computeArch, std::string &libDeviceName)
+static std::string getLibDeviceName(int computeArch)
 {
   const char *env = getenv("LIBNVVM_HOME");
 #ifdef LIBNVVM_HOME
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
-  const std::string libnvvmPath(env ? env : TOSTRING(LIBNVVM_HOME));
+  const std::string libnvvmPath1(env ? env : TOSTRING(LIBNVVM_HOME));
 #undef TOSTRING
 #undef STRINGIFY
 #else
-  const std::string libnvvmPath(env);
+  const std::string libnvvmPath1(env);
 #endif
 
+  const std::string libnvvmPath(env == nullptr ? libnvvmPath1 : std::string(env));
+
+
   if (libnvvmPath.empty())
-  {
-    fprintf(stderr, "The environment variable LIBNVVM_HOME is undefined\n");
-    return PTXGEN_LIBNVVM_HOME_UNDEFINED;
-  }
+    throw Exception("The environment variable LIBNVVM_HOME is undefined");
 
   /* Use libdevice for compute_20, if the target is not compute_20, compute_30,
    * or compute_35. */
+  if (computeArch == 37) computeArch = 35;
   const std::string libdevice = 
     std::string("/libdevice/libdevice.compute_") +
     lValueToString(computeArch)+ "." +
@@ -99,194 +105,109 @@ static PTXGENStatus getLibDeviceName(const int computeArch, std::string &libDevi
     lValueToString(LIBDEVICE_MINOR_VERSION) +
     ".bc";
 
-  libDeviceName = libnvvmPath + libdevice;
-
-  return PTXGEN_SUCCESS;
+  return libnvvmPath + libdevice;
 }
 
-static PTXGENStatus addFileToProgram(const std::string &filename, nvvmProgram prog)
+static void addFileToProgram(const std::string &filename, NVVMProg &prog)
 {
-  char        *buffer;
-  size_t       size;
-  Stat         fileStat;
 
   /* Open the input file. */
   FILE *f = fopen(filename.c_str(), "rb");
-  if (f == NULL) {
-    fprintf(stderr, "Failed to open %s\n", filename.c_str());
-    return PTXGEN_FILE_IO_ERROR;
-  }
+  if (f == NULL)
+    throw Exception(std::string("Failed to open ") + filename);
 
   /* Allocate buffer for the input. */
+  struct stat fileStat;
   fstat(fileno(f), &fileStat);
-  buffer = (char *) malloc(fileStat.st_size);
-  if (buffer == NULL) {
-    fprintf(stderr, "Failed to allocate memory\n");
-    return PTXGEN_BAD_ALLOC_ERROR;
-  }
-  size = fread(buffer, 1, fileStat.st_size, f);
-  if (ferror(f)) {
-    fprintf(stderr, "Failed to read %s\n", filename.c_str());
-    fclose(f);
-    free(buffer);
-    return PTXGEN_FILE_IO_ERROR;
-  }
+  std::string buffer(fileStat.st_size,0);
+
+  /* Read input file */
+  const size_t size = fread(&buffer[0], 1, fileStat.st_size, f);
+  const auto error = ferror(f);
   fclose(f);
+  if (error) 
+    throw Exception(std::string("Failed to read ") + filename + ".");
 
-  if (nvvmAddModuleToProgram(prog, buffer, size, filename.c_str()) != NVVM_SUCCESS) {
-    fprintf(stderr,
-            "Failed to add the module %s to the compilation unit\n",
-            filename.c_str());
-    free(buffer);
-    return PTXGEN_LIBNVVM_ERROR;
-  }
-
-  free(buffer);
-  return PTXGEN_SUCCESS;
+  /* Add IR block to a program */
+  if (nvvmAddModuleToProgram(prog.get(), buffer.c_str(), size, filename.c_str()) != NVVM_SUCCESS) 
+    throw Exception( 
+      std::string("Failed to add the module ") + filename + " to the compilation unit.");
 }
 
-static PTXGENStatus generatePTX(
-    std::vector<std::string> nvvmOptions, 
-    std::vector<std::string> nvvmFiles, 
-    std::ostream &out,
+static void printWarningsAndErrors(NVVMProg &prog)
+{
+  size_t logSize;
+  if (nvvmGetProgramLogSize(prog.get(), &logSize) == NVVM_SUCCESS) 
+  {
+    std::string log(logSize,0);
+    if (nvvmGetProgramLog(prog.get(), &log[0]) == NVVM_SUCCESS && logSize > 1)
+    {
+      std::cerr << "--------------------------------------\n";
+      std::cerr << log << std::endl;
+      std::cerr << "--------------------------------------\n";
+    }
+    else throw Exception("Failed to get the compilation log.");
+  }
+  else throw Exception("Failed to get the compilation log size.");
+}
+
+static std::string generatePTX(
+    const std::vector<std::string> &nvvmOptions, 
+    const std::vector<std::string> &nvvmFiles, 
     const int computeArch)
 {
-  nvvmProgram prog;
-  PTXGENStatus status;
+  std::string ptxString;
 
   /* Create the compiliation unit. */
-  if (nvvmCreateProgram(&prog) != NVVM_SUCCESS) 
-  {
-    fprintf(stderr, "Failed to create the compilation unit\n");
-    return PTXGEN_LIBNVVM_ERROR;
-  }
-  
+  NVVMProg prog;
 
   /* Add libdevice. */
-  std::string libDeviceName;
-  status = getLibDeviceName(computeArch, libDeviceName);
-  if (status != PTXGEN_SUCCESS) 
+  try
   {
-    nvvmDestroyProgram(&prog);
-    return status;
+    const std::string &libDeviceName = getLibDeviceName(computeArch);
+    addFileToProgram(libDeviceName, prog);
   }
-  status = addFileToProgram(libDeviceName, prog);
-  if (status != PTXGEN_SUCCESS) 
+  catch (const std::exception &ex)
   {
-    fprintf(stderr, "Please double-check LIBNVVM_HOME environmental variable.\n");
-    nvvmDestroyProgram(&prog);
-    return status;
+    throw Exception(ex.what());
   }
+    
+  std::vector<const char*> options;
+  for (const auto &f : nvvmFiles)
+    addFileToProgram(f, prog);
 
-  /* Add the module to the compilation unit. */
-  for (int i = 0; i < (int)nvvmFiles.size(); ++i) 
-  {
-    status = addFileToProgram(nvvmFiles[i], prog);
-    if (status != PTXGEN_SUCCESS) 
-    {
-      nvvmDestroyProgram(&prog);
-      return status;
-    }
-  }
-
-  const int numOptions = nvvmOptions.size();
-  std::vector<const char*> options(numOptions);
-  for (int i = 0; i < numOptions; i++)
-    options[i] = nvvmOptions[i].c_str();
-
-  /* Verify the compilation unit. */
-  if (nvvmVerifyProgram(prog, numOptions, &options[0]) != NVVM_SUCCESS) 
-  {
-    fprintf(stderr, "Failed to verify the compilation unit\n");
-    status |= PTXGEN_LIBNVVM_VERIFICATION_ERROR;
-  }
-
-  /* Print warnings and errors. */
-  {
-    size_t logSize;
-    if (nvvmGetProgramLogSize(prog, &logSize) != NVVM_SUCCESS) 
-    {
-      fprintf(stderr, "Failed to get the compilation log size\n");
-      status |= PTXGEN_LIBNVVM_ERROR;
-    } 
-    else 
-    {
-      std::string log(logSize,0);
-      if (nvvmGetProgramLog(prog, &log[0]) != NVVM_SUCCESS) 
-      {
-        fprintf(stderr, "Failed to get the compilation log\n");
-        status |= PTXGEN_LIBNVVM_ERROR;
-      } 
-      else 
-      {
-        fprintf(stderr, "%s\n", log.c_str());
-      }
-    }
-  }
-
-  if (status & PTXGEN_LIBNVVM_VERIFICATION_ERROR) 
-  {
-    nvvmDestroyProgram(&prog);
-    return status;
-  }
+  for (const auto &o : nvvmOptions)
+    options.push_back(o.c_str());
+ 
+  try 
+  { 
+    if (nvvmVerifyProgram(prog.get(), options.size(), &options[0]) != NVVM_SUCCESS) 
+      throw Exception("Failed to verify the compilation unit.");
   
-  /* Compile the compilation unit. */
-  if (nvvmCompileProgram(prog, numOptions, &options[0]) != NVVM_SUCCESS) 
-  {
-    fprintf(stderr, "Failed to generate PTX from the compilation unit\n");
-    status |= PTXGEN_LIBNVVM_COMPILATION_ERROR;
-  } 
-  else 
-  {
-    size_t ptxSize;
-    if (nvvmGetCompiledResultSize(prog, &ptxSize) != NVVM_SUCCESS) 
+    /* Compile the compilation unit. */
+    if (nvvmCompileProgram(prog.get(), options.size(), &options[0]) == NVVM_SUCCESS) 
     {
-      fprintf(stderr, "Failed to get the PTX output size\n");
-      status |= PTXGEN_LIBNVVM_ERROR;
-    } 
-    else 
-    {
-      std::string ptx(ptxSize,0);
-      if (nvvmGetCompiledResult(prog, &ptx[0]) != NVVM_SUCCESS) 
+      size_t ptxSize;
+      if (nvvmGetCompiledResultSize(prog.get(), &ptxSize) == NVVM_SUCCESS) 
       {
-        fprintf(stderr, "Failed to get the PTX output\n");
-        status |= PTXGEN_LIBNVVM_ERROR;
-      } 
-      else 
-      {
-        out << ptx;
+        ptxString.resize(ptxSize);
+        if (nvvmGetCompiledResult(prog.get(), &ptxString[0]) != NVVM_SUCCESS) 
+          throw Exception("Failed to get the PTX output.");
       }
+      else throw Exception("Failed to get the PTX output size.");
     }
+    else throw Exception("Failed to generate PTX from the compilation unit.");
+  }
+  catch (const std::exception &ex)
+  {
+    std::cerr << "NVVM exception: " << ex.what() <<  std::endl;
+    printWarningsAndErrors(prog);
+    throw Exception("");
   }
 
-  /* Print warnings and errors. */
-  {
-    size_t logSize;
-    if (nvvmGetProgramLogSize(prog, &logSize) != NVVM_SUCCESS) 
-    {
-      fprintf(stderr, "Failed to get the compilation log size\n");
-      status |= PTXGEN_LIBNVVM_ERROR;
-    } 
-    else 
-    {
-      std::string log(logSize,0);
-      if (nvvmGetProgramLog(prog, &log[0]) != NVVM_SUCCESS) 
-      {
-        fprintf(stderr, "Failed to get the compilation log\n");
-        status |= PTXGEN_LIBNVVM_ERROR;
-      } 
-      else 
-      {
-        fprintf(stderr, "%s\n", log.c_str());
-      }
-    }
-  }
+  return ptxString;
+};
 
-  /* Release the resources. */
-  nvvmDestroyProgram(&prog);
-
-  return PTXGEN_SUCCESS;
-}
 
 static void showUsage()
 {
@@ -299,7 +220,11 @@ static void lUsage(const int ret)
   fprintf(stdout, "\nusage: ptxgen [options] file.[ll,bc] \n");
   fprintf(stdout, "    [--help]\t\t This help\n");
   fprintf(stdout, "    [--verbose]\t\t Be verbose\n");
-  fprintf(stdout, "    [--arch={%s}]\t GPU target architecture\n", "sm_35");
+  fprintf(stdout, "    [--arch=]\t\t GPU target architectures:\n");
+  fprintf(stdout, "     \t\t\t   ");
+  for (const auto& mode : GPUTargets::computeMode)
+    fprintf(stdout, "%s ", mode);
+  fprintf(stdout, "\n");
   fprintf(stdout, "    [-o <name>]\t\t Output file name\n");
   fprintf(stdout, "    [-g]\t\t Enable generation of debuggin information \n");
   fprintf(stdout, "    [--opt=]\t\t Optimization parameters \n");
@@ -332,7 +257,7 @@ int main(int argc, char *argv[])
   bool _useFastMath = false;
   bool _debug       = false;
   bool _verbose     = false;
-  std::string _arch = "sm_35";
+  std::string _arch = *GPUTargets::computeMode.begin();
   std::string fileIR, filePTX;
 
   for (int i = 1; i < argc; ++i) 
@@ -413,8 +338,11 @@ int main(int argc, char *argv[])
   fprintf(stderr, "use_fast_math= %s\n", _useFastMath ? "true" : "false");
 #endif
 
-  int computeArch = 35;
-  assert(_arch == std::string("sm_35"));
+  if (std::find(GPUTargets::computeMode.begin(), GPUTargets::computeMode.end(), _arch) == GPUTargets::computeMode.end())
+  {
+    fprintf(stderr, "ptxcc fatal : --arch=%s is not supported; use option --help for more information\n", _arch.c_str());
+    exit(1);
+  }
 
   if (_useFastMath)
   {
@@ -422,8 +350,14 @@ int main(int argc, char *argv[])
     _precSqrt = _precDiv = 0;
   }
 
+  /* replace "sm" with "compute" */
+  assert(_arch[0] == 's' && _arch[1] == 'm' && _arch[2] == '_');
+  const std::string _mode = std::string("compute_") + &_arch[3];
+  const int computeArch = atoi(&_arch[3]);
+
+
   std::vector<std::string> nvvmOptions;
-  nvvmOptions.push_back("-arch=compute_35");
+  nvvmOptions.push_back("-arch="      + _mode);
   nvvmOptions.push_back("-ftz="       + lValueToString(_ftz));
   nvvmOptions.push_back("-prec-sqrt=" + lValueToString(_precSqrt));
   nvvmOptions.push_back("-prec-div="  + lValueToString(_precDiv));
@@ -434,11 +368,18 @@ int main(int argc, char *argv[])
   std::vector<std::string> nvvmFiles;
   nvvmFiles.push_back(fileIR);
 
-  std::ofstream outputPTX(filePTX.c_str());
-  assert(outputPTX);
 
-  const int ret = generatePTX(nvvmOptions, nvvmFiles, outputPTX, computeArch);
-    outputPTX.open(filePTX.c_str());
-  return ret;
+  try
+  {
+    std::ofstream outputPTX(filePTX.c_str());
+    outputPTX << generatePTX(nvvmOptions, nvvmFiles, computeArch);
+  } 
+  catch (const std::exception &ex)
+  {
+    std::cerr << "Error: ptxgen failed with exception \n   " << ex.what() << std::endl;
+    return -1;
+  }
+
+  return 0;
 }
 

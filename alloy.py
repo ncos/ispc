@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-#  Copyright (c) 2013-2014, Intel Corporation
+#  Copyright (c) 2013-2015, Intel Corporation
 #  All rights reserved.
 # 
 #  Redistribution and use in source and binary forms, with or without
@@ -108,8 +108,11 @@ def build_LLVM(version_LLVM, revision, folder, tarball, debug, selfbuild, extra,
     FOLDER_NAME=version_LLVM
     if  version_LLVM == "trunk":
         SVN_PATH="trunk"
+    if  version_LLVM == "3.6":
+        SVN_PATH="branches/release_36/"
+        version_LLVM = "3_6"
     if  version_LLVM == "3.5":
-        SVN_PATH="tags/RELEASE_350/final"
+        SVN_PATH="tags/RELEASE_351/final"
         version_LLVM = "3_5"
     if  version_LLVM == "3.4":
         SVN_PATH="tags/RELEASE_34/dot2-final"
@@ -235,14 +238,15 @@ def build_LLVM(version_LLVM, revision, folder, tarball, debug, selfbuild, extra,
                     "make install",
                     from_validation)
         os.chdir("../")
-        selfbuild_compiler = " CC="+llvm_home+ "/" + LLVM_BIN_selfbuild + "/bin/clang"
+        selfbuild_compiler = ("CC=" +llvm_home+ "/" + LLVM_BIN_selfbuild + "/bin/clang " +
+                              "CXX="+llvm_home+ "/" + LLVM_BIN_selfbuild + "/bin/clang++ ")
         print_debug("Now we have compiler for selfbuild: " + selfbuild_compiler + "\n", from_validation, alloy_build)
     os.chdir(LLVM_BUILD)
     if debug == False:
         if current_OS != "Windows":
             try_do_LLVM("configure release version ",
-                    "../" + LLVM_SRC + "/configure --prefix=" + llvm_home + "/" +
-                    LLVM_BIN + " --enable-optimized" + selfbuild_compiler +
+                    selfbuild_compiler + "../" + LLVM_SRC + "/configure --prefix=" + llvm_home + "/" +
+                    LLVM_BIN + " --enable-optimized" +
                     " --enable-targets=x86,x86_64,nvptx" +
                     ((" --with-gcc-toolchain=" + gcc_toolchain_path) if gcc_toolchain_path != "" else "") +
                     mac_system_root,
@@ -254,8 +258,8 @@ def build_LLVM(version_LLVM, revision, folder, tarball, debug, selfbuild, extra,
                     from_validation)
     else:
         try_do_LLVM("configure debug version ",
-                    "../" + LLVM_SRC + "/configure --prefix=" + llvm_home + "/" + LLVM_BIN +
-                    " --enable-debug-runtime --enable-debug-symbols --enable-keep-symbols" + selfbuild_compiler +
+                    selfbuild_compiler + "../" + LLVM_SRC + "/configure --prefix=" + llvm_home + "/" + LLVM_BIN +
+                    " --enable-debug-runtime --enable-debug-symbols --enable-keep-symbols" +
                     " --enable-targets=x86,x86_64,nvptx" +
                     ((" --with-gcc-toolchain=" + gcc_toolchain_path) if gcc_toolchain_path != "" else "") +
                     mac_system_root,
@@ -378,8 +382,10 @@ def build_ispc(version_LLVM, make):
             temp = "3_4"
         if version_LLVM == "3.5":
             temp = "3_5"
-        if version_LLVM == "trunk":
+        if version_LLVM == "3.6":
             temp = "3_6"
+        if version_LLVM == "trunk":
+            temp = "3_7"
         os.environ["LLVM_VERSION"] = "LLVM_" + temp
         try_do_LLVM("clean ISPC for building", "msbuild ispc.vcxproj /t:clean", True)
         try_do_LLVM("build ISPC with LLVM version " + version_LLVM + " ", "msbuild ispc.vcxproj /V:m /p:Platform=Win32 /p:Configuration=Release /t:rebuild", True)
@@ -480,7 +486,7 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
     print_debug("Folder: " + os.environ["ISPC_HOME"] + "\n", False, "")
     date = datetime.datetime.now()
     print_debug("Date: " + date.strftime('%H:%M %d/%m/%Y') + "\n", False, "")
-    newest_LLVM="3.5"
+    newest_LLVM="3.6"
     msg_additional_info = ""
 # *** *** ***
 # Stability validation run
@@ -527,7 +533,7 @@ def validation_run(only, only_targets, reference_branch, number, notify, update,
             archs.append("x86-64")
         if "native" in only:
             sde_targets_t = []
-        for i in ["3.2", "3.3", "3.4", "3.5", "trunk"]:
+        for i in ["3.2", "3.3", "3.4", "3.5", "3.6", "trunk"]:
             if i in only:
                 LLVM.append(i)
         only_param = re.split('R | ', only)
@@ -942,8 +948,9 @@ def Main():
         if os.environ.get("SMTP_ISPC") == None:
             error("you have no SMTP_ISPC in your environment for option notify", 1)
     if options.only != "":
-        test_only_r = " 3.2 3.3 3.4 3.5 trunk current build stability performance x86 x86-64 -O0 -O2 native R "
+        test_only_r = " 3.2 3.3 3.4 3.5 3.6 trunk current build stability performance x86 x86-64 -O0 -O2 native R "
         test_only = re.split('R | ', options.only)
+
         for iterator in test_only:
             if iterator[0] != "R":
                 if not (" " + iterator + " " in test_only_r):
@@ -1082,7 +1089,7 @@ if __name__ == '__main__':
     llvm_group = OptionGroup(parser, "Options for building LLVM",
                     "These options must be used with -b option.")
     llvm_group.add_option('--version', dest='version',
-        help='version of llvm to build: 3.2 3.3 3.4 3.5 trunk. Default: trunk', default="trunk")
+        help='version of llvm to build: 3.2 3.3 3.4 3.5 3.6 trunk. Default: trunk', default="trunk")
     llvm_group.add_option('--with-gcc-toolchain', dest='gcc_toolchain_path',
          help='GCC install dir to use when building clang. It is important to set when ' +
          'you have alternative gcc installation. Note that otherwise gcc from standard ' +
@@ -1123,10 +1130,10 @@ if __name__ == '__main__':
     run_group.add_option('--only', dest='only',
         help='set types of tests. Possible values:\n' + 
             '-O0, -O2, x86, x86-64, stability (test only stability), performance (test only performance)\n' +
-            'build (only build with different LLVM), 3.2, 3.3, 3.4 3.5, trunk, native (do not use SDE), current (do not rebuild ISPC).',
+            'build (only build with different LLVM), 3.2, 3.3, 3.4, 3.5, 3.6, trunk, native (do not use SDE), current (do not rebuild ISPC).',
             default="")
     run_group.add_option('--perf_LLVM', dest='perf_llvm',
-        help='compare LLVM 3.5 with "--compare-with", default trunk', default=False, action='store_true')
+        help='compare LLVM 3.6 with "--compare-with", default trunk', default=False, action='store_true')
     parser.add_option_group(run_group)
     # options for activity "regression test"
     regr_group = OptionGroup(parser, "Options for regression search",

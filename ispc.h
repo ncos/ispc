@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2014, Intel Corporation
+  Copyright (c) 2010-2015, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -38,10 +38,10 @@
 #ifndef ISPC_H
 #define ISPC_H
 
-#define ISPC_VERSION "1.8.1dev"
+#define ISPC_VERSION "1.8.2dev"
 
-#if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) && !defined(LLVM_3_5) && !defined(LLVM_3_6)
-#error "Only LLVM 3.2, 3.3, 3.4, 3.5 and the 3.6 development branch are supported"
+#if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) && !defined(LLVM_3_5) && !defined(LLVM_3_6) && !defined(LLVM_3_7)
+#error "Only LLVM 3.2, 3.3, 3.4, 3.5, 3.6 and 3.7 development branch are supported"
 #endif
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -176,14 +176,20 @@ public:
         also that __best_available_isa() needs to be updated if ISAs are
         added or the enumerant values are reordered.  */
     enum ISA {
+        SSE2    = 0,
+        SSE4    = 1,
+        AVX     = 2,
+        AVX11   = 3,
+        AVX2    = 4,
+        GENERIC = 5,
 #ifdef ISPC_NVPTX_ENABLED
-               NVPTX,
-#endif 
-#ifdef ISPC_ARM_ENABLED
-               NEON32, NEON16, NEON8,
+        NVPTX,
 #endif
-               SSE2, SSE4, AVX, AVX11, AVX2, GENERIC,
-               NUM_ISAS };
+#ifdef ISPC_ARM_ENABLED
+        NEON32, NEON16, NEON8,
+#endif
+        NUM_ISAS
+    };
 
     /** Initializes the given Target pointer for a target of the given
         name, if the name is a known target.  Returns true if the
@@ -606,6 +612,9 @@ struct Globals {
     /** Indicates that alignment in memory allocation routines should be
         forced to have given value. -1 value means natural alignment for the platforms. */
     int forceAlignment;
+
+    /** When true, flag non-static functions with dllexport attribute on Windows. */
+    bool dllExport;
 };
 
 enum {

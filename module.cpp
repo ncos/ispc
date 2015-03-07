@@ -92,7 +92,11 @@
 #endif
 #endif /* ISPC_NVPTX_ENABLED */
 #endif
-#include <llvm/PassManager.h>
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+  #include "llvm/PassManager.h"
+#else // LLVM 3.7+
+  #include "llvm/IR/LegacyPassManager.h"
+#endif
 #include <llvm/PassRegistry.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Support/FormattedStream.h>
@@ -109,10 +113,12 @@
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) // LLVM 3.5+
     #include <llvm/IR/Verifier.h>
     #include <llvm/IR/IRPrintingPasses.h>
+    #include <llvm/IR/InstIterator.h>
     #include <llvm/IR/CFG.h>
 #else
     #include <llvm/Analysis/Verifier.h>
     #include <llvm/Assembly/PrintModulePass.h>
+    #include <llvm/Support/InstIterator.h>
     #include <llvm/Support/CFG.h>
 #endif
 #include <clang/Frontend/CompilerInstance.h>
@@ -164,41 +170,76 @@ static void
 lStripUnusedDebugInfo(llvm::Module *module) {
     if (g->generateDebuggingSymbols == false)
         return;
-
+#if defined (LLVM_3_2) || defined (LLVM_3_3)|| defined (LLVM_3_4)|| defined (LLVM_3_5)
+    std::set<llvm::Value *> SPall;
+#else // LLVN 3.6++
+    std::set<llvm::Metadata *> SPall;
+#endif
+    // OK, now we are to determine which functions actually survived the
+    // optimization. We will now read all IR instructions in the module.
+    //
+    // for every function in the module
+    for (llvm::Module::const_iterator
+             f = module->begin(), fe = module->end(); f != fe; ++f) {
+        /// for every instruction in the function
+        for (llvm::const_inst_iterator
+                 i = llvm::inst_begin(&(*f)),
+                 ie = llvm::inst_end(&(*f)); i != ie; ++i) {
+            const llvm::Instruction *inst = &(*i);
+            // get the instruction`s debugging metadata
+            llvm::MDNode *node = inst->getMetadata(llvm::LLVMContext::MD_dbg);
+            while (node) {
+                llvm::DILocation dloc(node);
+                // get the scope of the current instruction`s location
+                llvm::DIScope scope = dloc.getScope();
+                // node becomes NULL if this was the original location
+                node = dloc.getOrigLocation();
+                // now following a chain of nested scopes
+                while (!0) {
+                    if (scope.isLexicalBlockFile())
+                        scope = llvm::DILexicalBlockFile(scope).getScope();
+                    else if (scope.isLexicalBlock())
+                        scope = llvm::DILexicalBlock(scope).getContext();
+                    else if (scope.isNameSpace())
+                        scope = llvm::DINameSpace(scope).getContext();
+                    else break;
+                }
+                if (scope.isSubprogram()) {
+                    // good, the chain ended with a function; adding
+                    SPall.insert(scope);
+                }
+            }
+        }
+    }
     // loop over the compile units that contributed to the final module
     if (llvm::NamedMDNode *cuNodes = module->getNamedMetadata("llvm.dbg.cu")) {
         for (unsigned i = 0, ie = cuNodes->getNumOperands(); i != ie; ++i) {
-#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5)
             llvm::MDNode *cuNode = cuNodes->getOperand(i);
-#else // LLVM 3.6+
-            llvm::MDNode *cuNode = llvm::cast<llvm::MDNode>(cuNodes->getOperand(i));
-#endif
             llvm::DICompileUnit cu(cuNode);
             llvm::DIArray subprograms = cu.getSubprograms();
-            std::vector<llvm::Value *> usedSubprograms;
 
             if (subprograms.getNumElements() == 0)
                 continue;
 
-            // And now loop over the subprograms inside each compile unit.
-            for (unsigned j = 0, je = subprograms.getNumElements(); j != je; ++j) {
-                llvm::MDNode *spNode =
-                    llvm::dyn_cast<llvm::MDNode>(subprograms->getOperand(j));
-                Assert(spNode != NULL);
-                llvm::DISubprogram sp(spNode);
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5)
+            std::set<llvm::Value *> SPset;
+            std::vector<llvm::Value *> usedSubprograms;
+#else // LLVM 3.6+
+            std::set<llvm::Metadata *> SPset;
+            std::vector<llvm::Metadata *> usedSubprograms;
+#endif
 
-                // Get the name of the subprogram.  Start with the mangled
-                // name; if that's empty then we have an export'ed
-                // function, so grab the unmangled name in that case.
-                std::string name = sp.getLinkageName();
-                if (name == "")
-                    name = sp.getName();
+            // determine what functions of those extracted belong to the unit
+            for (unsigned j = 0, je = subprograms.getNumElements(); j != je; ++j)
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5)
+                SPset.insert(subprograms->getOperand(j));
+#else // LLVM 3.6+
+                SPset.insert(subprograms.getElement(j));
+#endif
 
-                // Does the llvm::Function for this function survive in the
-                // module?
-                if (module->getFunction(name) != NULL)
-                    usedSubprograms.push_back(sp);
-            }
+            std::set_intersection(SPall.begin(), SPall.end(),
+                                  SPset.begin(), SPset.end(),
+                                  std::back_inserter(usedSubprograms));
 
             Debug(SourcePos(), "%d / %d functions left in module with debug "
                   "info.", (int)usedSubprograms.size(),
@@ -241,7 +282,7 @@ lStripUnusedDebugInfo(llvm::Module *module) {
             llvm::MDNode *replNode =
                 llvm::MDNode::get(*g->ctx, llvm::ArrayRef<llvm::Value *>(usedSubprogramsArray));
             cuNode->replaceOperandWith(12, replNode);
-#else // LLVM 3.3+
+#elif defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5)
             llvm::MDNode *nodeSPMDArray =
                 llvm::dyn_cast<llvm::MDNode>(cuNode->getOperand(9));
             Assert(nodeSPMDArray != NULL);
@@ -255,6 +296,17 @@ lStripUnusedDebugInfo(llvm::Module *module) {
             llvm::MDNode *replNode =
                 m->diBuilder->getOrCreateArray(llvm::ArrayRef<llvm::Value *>(usedSubprograms));
             cuNode->replaceOperandWith(9, replNode);
+#else // LLVM 3.6+
+            llvm::DIArray nodeSPs = cu.getSubprograms();
+            Assert(nodeSPs.getNumElements() == subprograms.getNumElements());
+            for (int i = 0; i < (int)nodeSPs.getNumElements(); ++i)
+                Assert(nodeSPs.getElement(i) == subprograms.getElement(i));
+
+            // And now we can go and stuff it into the unit with some
+            // confidence...
+            llvm::MDNode *replNode = llvm::MDNode::get(module->getContext(), 
+                                                       llvm::ArrayRef<llvm::Metadata *>(usedSubprograms));
+            cu.replaceSubprograms(llvm::DIArray(replNode));
 #endif
         }
     }
@@ -270,12 +322,6 @@ lStripUnusedDebugInfo(llvm::Module *module) {
     }
     for (int i = 0; i < (int)toErase.size(); ++i)
         module->eraseNamedMetadata(toErase[i]);
-
-    // Wrap up by running the LLVM pass to remove anything left that's
-    // unused.
-    llvm::PassManager pm;
-    pm.add(llvm::createStripDeadDebugInfoPass());
-    pm.run(*module);
 }
 
 
@@ -405,6 +451,8 @@ Module::CompileFile() {
 
     ast->GenerateIR();
 
+    if (diBuilder)
+        diBuilder->finalize();
     if (errorCount == 0)
         Optimize(module, g->opt.level);
 
@@ -607,18 +655,21 @@ Module::AddGlobalVariable(const std::string &name, const Type *type, Expr *initE
 
     if (diBuilder) {
         llvm::DIFile file = pos.GetDIFile();
-        llvm::DIGlobalVariable var =
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) && !defined(LLVM_3_5)// LLVM 3.6+
-            diBuilder->createGlobalVariable(file,
+        llvm::Constant *sym_const_storagePtr = llvm::dyn_cast<llvm::Constant>(sym->storagePtr);
+        Assert(sym_const_storagePtr);
+        llvm::DIGlobalVariable var = diBuilder->createGlobalVariable(
+                                            file,
                                             name,
                                             name,
                                             file,
                                             pos.first_line,
                                             sym->type->GetDIType(file),
                                             (sym->storageClass == SC_STATIC),
-                                            sym->storagePtr);
+                                            sym_const_storagePtr);
 #else
-            diBuilder->createGlobalVariable(name,
+        llvm::DIGlobalVariable var = diBuilder->createGlobalVariable(
+                                            name,
                                             file,
                                             pos.first_line,
                                             sym->type->GetDIType(file),
@@ -866,6 +917,13 @@ Module::AddFunctionDeclaration(const std::string &name,
     llvm::Function *function =
         llvm::Function::Create(llvmFunctionType, linkage, functionName.c_str(),
                                module);
+    
+#ifdef ISPC_IS_WINDOWS
+    // Make export functions callable from DLLS.
+    if ((g->dllExport) && (storageClass != SC_STATIC)) {
+      function->setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
+    }
+#endif
 
     // Set function attributes: we never throw exceptions
     function->setDoesNotThrow();
@@ -1030,11 +1088,8 @@ Module::AddExportedTypes(const std::vector<std::pair<const Type *,
 bool
 Module::writeOutput(OutputType outputType, const char *outFileName,
                     const char *includeFileName, DispatchHeaderInfo *DHI) {
-    if (diBuilder != NULL && (outputType != Header && outputType != Deps)) {
-        diBuilder->finalize();
-
+    if (diBuilder && (outputType != Header) && (outputType != Deps))
         lStripUnusedDebugInfo(module);
-    }
 
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) // LLVM 3.4+
     // In LLVM_3_4 after r195494 and r195504 revisions we should pass
@@ -1165,6 +1220,7 @@ lFixAttributes(const vecString_t &src, vecString_t &dst)
   typedef std::map<std::string, std::string> attributeMap_t;
   attributeMap_t attributeMap;
 
+#ifdef ISPC_NVPTX_NVVM_OLD  /* guard for NVVM from CUDA TK < 7.0 */
   for (vecString_t::const_iterator it = src.begin();  it != src.end(); it++)
   {
     const vecString_t words = lSplitString(*it);
@@ -1181,9 +1237,12 @@ lFixAttributes(const vecString_t &src, vecString_t &dst)
       attributeMap[words[1]] = attributes;
     }
   }
+#endif
+
   for (vecString_t::const_iterator it = src.begin();  it != src.end(); it++)
   {
     vecString_t words = lSplitString(*it);
+    /* evghenii: is there a cleaner way to set target datalayout for ptx ? */
     if (words.size() > 1 && (words[0] == "target" && words[1] == "datalayout"))
     {
       std::string s = "target datalayout = ";
@@ -1197,9 +1256,10 @@ lFixAttributes(const vecString_t &src, vecString_t &dst)
       continue;
     std::string s;
     std::map<std::string, std::string> attributeSet;
-#if 1  /* this attributed cannot be used in function parametrers, so remove them */
-    attributeSet["readnone"]   = " ";
-    attributeSet["readonly"]   = " ";
+#ifdef ISPC_NVPTX_NVVM_OLD  /* guard for NVVM from CUDA TK < 7.0 */
+                            /* this attributed cannot be used in function parameters, so remove them */
+    attributeSet["readnone"]    = " ";
+    attributeSet["readonly"]    = " ";
     attributeSet["readnone,"]   = ",";
     attributeSet["readonly,"]   = ",";
 #endif
@@ -1213,8 +1273,8 @@ lFixAttributes(const vecString_t &src, vecString_t &dst)
       if ((*w)[0] == '#')
       {
         attributeMap_t::iterator m = attributeMap.find(*w);
-        assert (m != attributeMap.end());
-        *w = attributeMap[*w];
+        if (m != attributeMap.end())
+          *w = attributeMap[*w];
       }
       s += *w + " ";
     }
@@ -1337,16 +1397,20 @@ Module::writeObjectFileOrAssembly(llvm::TargetMachine *targetMachine,
         return false;
     }
 
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     llvm::PassManager pm;
+#else // LLVM 3.7+
+    llvm::legacy::PassManager pm;
+#endif
 #if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4)
     pm.add(new llvm::DataLayout(*g->target->getDataLayout()));
 #elif defined(LLVM_3_5)
     pm.add(new llvm::DataLayoutPass(*g->target->getDataLayout()));
-#else // LLVM 3.6+
+#elif defined(LLVM_3_6)
     llvm::DataLayoutPass *dlp= new llvm::DataLayoutPass();
     dlp->doInitialization(*module);
     pm.add(dlp);
-#endif
+#endif // LLVM 3.7+ doesn't have DataLayoutPass anymore.
 
     llvm::formatted_raw_ostream fos(of->os());
 
@@ -1430,22 +1494,49 @@ lEmitStructDecl(const StructType *st, std::vector<const StructType *> *emittedSt
     fprintf(file, "#ifndef __ISPC_STRUCT_%s__\n",st->GetCStructName().c_str());
     fprintf(file, "#define __ISPC_STRUCT_%s__\n",st->GetCStructName().c_str());
 
-    fprintf(file, "struct %s", st->GetCStructName().c_str());
+    char sSOA[48];
+    bool pack, needsAlign = false;
+    llvm::Type *stype = st->LLVMType(g->ctx);
+    llvm::DataLayout *DL = g->target->getDataLayout();
+
+    if (!(pack = llvm::dyn_cast<llvm::StructType>(stype)->isPacked()))
+        for (int i = 0; !needsAlign && (i < st->GetElementCount()); ++i) {
+            const Type *ftype = st->GetElementType(i)->GetAsNonConstType();
+            needsAlign |= ftype->IsVaryingType()
+                       && (CastType<StructType>(ftype) == NULL);
+        }
     if (st->GetSOAWidth() > 0)
         // This has to match the naming scheme in
         // StructType::GetCDeclaration().
-        fprintf(file, "_SOA%d", st->GetSOAWidth());
-    fprintf(file, " {\n");
-
+        sprintf(sSOA, "_SOA%d", st->GetSOAWidth());
+    else
+        *sSOA = '\0';
+    if (!needsAlign)
+        fprintf(file, "%sstruct %s%s {\n", (pack)? "packed " : "",
+                      st->GetCStructName().c_str(), sSOA);
+    else {
+        unsigned uABI = DL->getABITypeAlignment(stype);
+        fprintf(file, "__ISPC_ALIGNED_STRUCT__(%u) %s%s {\n", uABI,
+                      st->GetCStructName().c_str(), sSOA);
+    }
     for (int i = 0; i < st->GetElementCount(); ++i) {
-        const Type *type = st->GetElementType(i)->GetAsNonConstType();
-        std::string d = type->GetCDeclaration(st->GetElementName(i));
-	// Don't expand struct members as their insides will be expanded.
-        if (type->IsVaryingType() && (CastType<StructType>(type) == NULL)) {
-          fprintf(file, "    %s[%d];\n", d.c_str(), g->target->getVectorWidth());
+        const Type *ftype = st->GetElementType(i)->GetAsNonConstType();
+        std::string d = ftype->GetCDeclaration(st->GetElementName(i));
+
+        fprintf(file, "    ");
+        if (needsAlign && ftype->IsVaryingType() &&
+           (CastType<StructType>(ftype) == NULL)) {
+            unsigned uABI = DL->getABITypeAlignment(ftype->LLVMType(g->ctx));
+            fprintf(file, "__ISPC_ALIGN__(%u) ", uABI);
+        }
+        // Don't expand arrays, pointers and structures:
+        // their insides will be expanded automatically.
+        if (!ftype->IsArrayType() && !ftype->IsPointerType() &&
+            ftype->IsVaryingType() && (CastType<StructType>(ftype) == NULL)) {
+            fprintf(file, "%s[%d];\n", d.c_str(), g->target->getVectorWidth());
         }
         else {
-          fprintf(file, "    %s;\n", d.c_str());
+            fprintf(file, "%s;\n", d.c_str());
         }
     }
     fprintf(file, "};\n");
@@ -1459,8 +1550,22 @@ lEmitStructDecl(const StructType *st, std::vector<const StructType *> *emittedSt
 static void
 lEmitStructDecls(std::vector<const StructType *> &structTypes, FILE *file, bool emitUnifs=true) {
     std::vector<const StructType *> emittedStructs;
+
+    fprintf(file,
+            "\n#ifndef __ISPC_ALIGN__\n"
+            "#if defined(__clang__) || !defined(_MSC_VER)\n"
+            "// Clang, GCC, ICC\n"
+            "#define __ISPC_ALIGN__(s) __attribute__((aligned(s)))\n"
+            "#define __ISPC_ALIGNED_STRUCT__(s) struct __ISPC_ALIGN__(s)\n"
+            "#else\n"
+            "// Visual Studio\n"
+            "#define __ISPC_ALIGN__(s) __declspec(align(s))\n"
+            "#define __ISPC_ALIGNED_STRUCT__(s) __ISPC_ALIGN__(s) struct\n"
+            "#endif\n"
+            "#endif\n\n");
+
     for (unsigned int i = 0; i < structTypes.size(); ++i)
-      lEmitStructDecl(structTypes[i], &emittedStructs, file, emitUnifs);
+        lEmitStructDecl(structTypes[i], &emittedStructs, file, emitUnifs);
 }
 
 
@@ -2798,7 +2903,12 @@ lCreateDispatchModule(std::map<std::string, FunctionTargetVariants> &functions) 
 
     // Do some rudimentary cleanup of the final result and make sure that
     // the module is all ok.
+
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     llvm::PassManager optPM;
+#else // LLVM 3.7+
+    llvm::legacy::PassManager optPM;
+#endif
     optPM.add(llvm::createGlobalDCEPass());
     optPM.add(llvm::createVerifierPass());
     optPM.run(*module);
@@ -2806,8 +2916,10 @@ lCreateDispatchModule(std::map<std::string, FunctionTargetVariants> &functions) 
     return module;
 }
 
+
 #ifdef ISPC_NVPTX_ENABLED
-static std::string lCBEMangle(const std::string &S) {
+static std::string lCBEMangle(const std::string &S) 
+{
   std::string Result;
 
   for (unsigned i = 0, e = S.size(); i != e; ++i) {
@@ -3074,6 +3186,10 @@ Module::CompileAndOutput(const char *srcFile,
                 writeObjectFileOrAssembly(firstTargetMachine, dispatchModule,
                                           outputType, outFileName);
         }
+
+        if (depsFileName != NULL)
+            if (!m->writeOutput(Module::Deps, depsFileName))
+                return 1;
 
         delete g->target;
         g->target = NULL;

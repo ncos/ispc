@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2014, Intel Corporation
+  Copyright (c) 2010-2015, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -72,7 +72,11 @@
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) // LLVM 3.4+
   #include <llvm/Transforms/Instrumentation.h>
 #endif
-#include <llvm/PassManager.h>
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+  #include "llvm/PassManager.h"
+#else // LLVM 3.7+
+  #include "llvm/IR/LegacyPassManager.h"
+#endif
 #include <llvm/PassRegistry.h>
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) // LLVM 3.5+
     #include <llvm/IR/Verifier.h>
@@ -86,7 +90,11 @@
     #include <llvm/DebugInfo.h>
 #endif
 #include <llvm/Analysis/ConstantFolding.h>
-#include <llvm/Target/TargetLibraryInfo.h>
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+    #include <llvm/Target/TargetLibraryInfo.h>
+#else // LLVM 3.7+
+    #include <llvm/Analysis/TargetLibraryInfo.h>
+#endif
 #include <llvm/ADT/Triple.h>
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/Transforms/Scalar.h>
@@ -185,11 +193,8 @@ lCopyMetadata(llvm::Value *vto, const llvm::Instruction *from) {
     if (!to)
         return;
 
-#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5)
     llvm::SmallVector<std::pair<unsigned int, llvm::MDNode *>, 8> metadata;
-#else // LLVM 3.6+
-    llvm::SmallVector<std::pair<unsigned int, llvm::Value *>, 8> metadata;
-#endif
+
     from->getAllMetadata(metadata);
     for (unsigned int i = 0; i < metadata.size(); ++i)
         to->setMetadata(metadata[i].first, metadata[i].second);
@@ -219,19 +224,12 @@ lCopyMetadata(llvm::Value *vto, const llvm::Instruction *from) {
 */
 static bool
 lGetSourcePosFromMetadata(const llvm::Instruction *inst, SourcePos *pos) {
-#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5)    
     llvm::MDNode *filename = inst->getMetadata("filename");
     llvm::MDNode *first_line = inst->getMetadata("first_line");
     llvm::MDNode *first_column = inst->getMetadata("first_column");
     llvm::MDNode *last_line = inst->getMetadata("last_line");
     llvm::MDNode *last_column = inst->getMetadata("last_column");
-#else // LLVM 3.6+
-    llvm::MDNode *filename = inst->getMDNode("filename");
-    llvm::MDNode *first_line = inst->getMDNode("first_line");
-    llvm::MDNode *first_column = inst->getMDNode("first_column");
-    llvm::MDNode *last_line = inst->getMDNode("last_line");
-    llvm::MDNode *last_column = inst->getMDNode("last_column");
-#endif
+
     if (!filename || !first_line || !first_column || !last_line || !last_column)
         return false;
 
@@ -240,16 +238,35 @@ lGetSourcePosFromMetadata(const llvm::Instruction *inst, SourcePos *pos) {
     llvm::MDString *str = llvm::dyn_cast<llvm::MDString>(filename->getOperand(0));
     Assert(str);
     llvm::ConstantInt *first_lnum =
+#if defined (LLVM_3_2) || defined (LLVM_3_3)|| defined (LLVM_3_4)|| defined (LLVM_3_5)
         llvm::dyn_cast<llvm::ConstantInt>(first_line->getOperand(0));
+#else // LLVN 3.6++
+        llvm::mdconst::extract<llvm::ConstantInt>(first_line->getOperand(0));
+#endif
     Assert(first_lnum);
+
     llvm::ConstantInt *first_colnum =
+#if defined (LLVM_3_2) || defined (LLVM_3_3)|| defined (LLVM_3_4)|| defined (LLVM_3_5)
         llvm::dyn_cast<llvm::ConstantInt>(first_column->getOperand(0));
+#else // LLVN 3.6++
+        llvm::mdconst::extract<llvm::ConstantInt>(first_column->getOperand(0));
+#endif
     Assert(first_column);
+
     llvm::ConstantInt *last_lnum =
+#if defined (LLVM_3_2) || defined (LLVM_3_3)|| defined (LLVM_3_4)|| defined (LLVM_3_5)
         llvm::dyn_cast<llvm::ConstantInt>(last_line->getOperand(0));
+#else // LLVN 3.6++
+        llvm::mdconst::extract<llvm::ConstantInt>(last_line->getOperand(0));
+#endif
     Assert(last_lnum);
+
     llvm::ConstantInt *last_colnum =
+#if defined (LLVM_3_2) || defined (LLVM_3_3)|| defined (LLVM_3_4)|| defined (LLVM_3_5)
         llvm::dyn_cast<llvm::ConstantInt>(last_column->getOperand(0));
+#else // LLVN 3.6++
+        llvm::mdconst::extract<llvm::ConstantInt>(last_column->getOperand(0));
+#endif
     Assert(last_column);
 
     *pos = SourcePos(str->getString().data(), (int)first_lnum->getZExtValue(),
@@ -377,6 +394,8 @@ lGetMask(llvm::Value *factor, uint64_t *mask) {
                 llvm::dyn_cast<llvm::Constant>(cv->getOperand(i));
             if (c == NULL)
                 return false;
+            if (llvm::isa<llvm::ConstantExpr>(cv->getOperand(i)) )
+                return false; // We can not handle constant expressions here
             elements.push_back(c);
         }
         *mask = lConstElementsToMask(elements);
@@ -442,10 +461,17 @@ public:
     DebugPassManager():number(0){}
     void add(llvm::Pass * P, int stage);
     bool run(llvm::Module& M) {return PM.run(M);}
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     llvm::PassManager& getPM() {return PM;}
-
+#else // LLVM 3.7+
+    llvm::legacy::PassManager& getPM() {return PM;}
+#endif
 private:
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     llvm::PassManager PM;
+#else // LLVM 3.7+
+    llvm::legacy::PassManager PM;
+#endif
     int number;
 };
 
@@ -469,7 +495,7 @@ DebugPassManager::add(llvm::Pass * P, int stage = -1) {
             PM.add(CreateDebugPass(buf));
         }
 
-#if !defined(LLVM_3_2) && !defined(LLVM_3_3) // LLVM 3.4+
+#if defined(LLVM_3_4) || defined(LLVM_3_5) // only 3.4 and 3.5
         if (g->debugIR == number) {
             // adding generating of LLVM IR debug after optimization
             char buf[100];
@@ -490,27 +516,33 @@ Optimize(llvm::Module *module, int optLevel) {
     DebugPassManager optPM;
     optPM.add(llvm::createVerifierPass(),0);
 
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     llvm::TargetLibraryInfo *targetLibraryInfo =
         new llvm::TargetLibraryInfo(llvm::Triple(module->getTargetTriple()));
     optPM.add(targetLibraryInfo);
+#else // LLVM 3.7+
+    optPM.add(new llvm::TargetLibraryInfoWrapperPass(llvm::Triple(module->getTargetTriple())));
+#endif
 
 #if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4)
     optPM.add(new llvm::DataLayout(*g->target->getDataLayout()));
 #elif defined(LLVM_3_5)
     optPM.add(new llvm::DataLayoutPass(*g->target->getDataLayout()));
-#else // LLVM 3.6+
+#elif defined(LLVM_3_6)
     llvm::DataLayoutPass *dlp= new llvm::DataLayoutPass();
     dlp->doInitialization(*module);
     optPM.add(dlp);
-#endif
+#endif // LLVM 3.7+ doesn't have DataLayoutPass anymore.
 
     llvm::TargetMachine *targetMachine = g->target->GetTargetMachine();
 
 #ifdef LLVM_3_2
     optPM.add(new llvm::TargetTransformInfo(targetMachine->getScalarTargetTransformInfo(),
                                             targetMachine->getVectorTargetTransformInfo()));
-#else // LLVM 3.3+
+#elif defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6) // LLVM 3.3 - 3.6
     targetMachine->addAnalysisPasses(optPM.getPM());
+#else // LLVM 3.7+
+    optPM.getPM().add(createTargetTransformInfoWrapperPass(targetMachine->getTargetIRAnalysis()));
 #endif
 
     optPM.add(llvm::createIndVarSimplifyPass());
@@ -1210,7 +1242,11 @@ InstructionSimplifyPass::simplifyBoolVec(llvm::Value *value) {
             zext->getOperand(0)->getType() == LLVMTypes::Int1VectorType)
             return zext->getOperand(0);
     }
-
+    /*
+      // This optimization has discernable benefit on the perf 
+      // suite on latest LLVM versions.
+      // On 3.4+ (maybe even older), it can result in illegal 
+      // operations, so it's being disabled.
     llvm::ICmpInst *icmp = llvm::dyn_cast<llvm::ICmpInst>(value);
     if (icmp != NULL) {
         // icmp(ne, {sext,zext}(foo), zeroinitializer) -> foo
@@ -1226,7 +1262,9 @@ InstructionSimplifyPass::simplifyBoolVec(llvm::Value *value) {
                     return zext->getOperand(0);
             }
         }
+
     }
+    */
     return NULL;
 }
 

@@ -220,7 +220,7 @@ typedef struct PRE_ALIGN(64) __vec16_i64 {
   __m512i v_lo;
 } POST_ALIGN(64) __vec16_i64;
 
-static __vec16_i64 zmm2hilo(const __m512i v1, const __m512i v2){
+FORCEINLINE __vec16_i64 zmm2hilo(const __m512i v1, const __m512i v2){
   __vec16_i64 v;
   v.v_hi = _mm512_mask_permutevar_epi32(_mm512_undefined_epi32(), 0xFF00,
                   _mm512_set_16to16_pi(15,13,11,9,7,5,3,1,14,12,10,8,6,4,2,0),
@@ -237,7 +237,7 @@ static __vec16_i64 zmm2hilo(const __m512i v1, const __m512i v2){
   return v;
 }
 
-static void hilo2zmm(const __vec16_i64 &v, __m512i &_v1, __m512i &_v2) {
+FORCEINLINE void hilo2zmm(const __vec16_i64 &v, __m512i &_v1, __m512i &_v2) {
   _v2 = _mm512_mask_permutevar_epi32(_mm512_undefined_epi32(), 0xAAAA,
                _mm512_set_16to16_pi(15,15,14,14,13,13,12,12,11,11,10,10,9,9,8,8),
                v.v_hi);
@@ -251,6 +251,13 @@ static void hilo2zmm(const __vec16_i64 &v, __m512i &_v1, __m512i &_v2) {
                _mm512_set_16to16_pi(7,7,6,6,5,5,4,4,3,3,2,2,1,1,0,0),
                v.v_lo);
 }
+
+FORCEINLINE __vec16_i64 hilo2zmm(const __vec16_i64 &v) {
+  __vec16_i64 ret;
+  hilo2zmm(v, ret.v_hi, ret.v_lo);
+  return ret;
+}
+
 
 template <typename T>
 struct vec16 {
@@ -1006,8 +1013,8 @@ static FORCEINLINE __vec16_i64 __ashr(__vec16_i64 a, __vec16_i64 b) {
 }
 
 static FORCEINLINE __vec16_i64 __ashr(__vec16_i64 a, unsigned long long b) {
-__vec16_i32 xfer;
-  if (b <= 32) xfer = _mm512_slli_epi32(_mm512_and_epi32(a.v_hi, _mm512_set1_epi32((1<<b)-1)), 32-b);
+  __vec16_i32 xfer;
+  if (b < 32) xfer = _mm512_slli_epi32(_mm512_and_epi32(a.v_hi, _mm512_set1_epi32((1<<b)-1)), 32-b);
   else  xfer = _mm512_srai_epi32(a.v_hi, b-32);
   __vec16_i32 hi = _mm512_srai_epi32(a.v_hi, b);
   __vec16_i32 lo = _mm512_or_epi32(xfer, _mm512_srli_epi32(a.v_lo, b));
@@ -1381,8 +1388,16 @@ static FORCEINLINE __vec16_i1 __ordered_float(__vec16_f a, __vec16_f b) {
   return _mm512_cmpord_ps_mask(a, b);
 }
 
+static FORCEINLINE __vec16_i1 __ordered_float_and_mask(__vec16_f a, __vec16_f b, __vec16_i1 mask) {
+  return _mm512_mask_cmpord_ps_mask(mask, a, b);
+}
+
 static FORCEINLINE __vec16_i1 __unordered_float(__vec16_f a, __vec16_f b) {
   return _mm512_cmpunord_ps_mask(a, b);
+}
+
+static FORCEINLINE __vec16_i1 __unordered_float_and_mask(__vec16_f a, __vec16_f b, __vec16_i1 mask) {
+  return _mm512_mask_cmpunord_ps_mask(mask, a, b);
 }
 
 static FORCEINLINE __vec16_f __select(__vec16_i1 mask, __vec16_f a, __vec16_f b) {
@@ -1724,6 +1739,15 @@ static FORCEINLINE __vec16_i1 __unordered_double(__vec16_d a, __vec16_d b) {
   __vec16_i1 ret2;
   ret1 = _mm512_cmpunord_pd_mask(a.v1, b.v1);
   ret2 = _mm512_cmpunord_pd_mask(a.v2, b.v2);
+  return _mm512_kmovlhb(ret1, ret2);
+}
+
+static FORCEINLINE __vec16_i1 __unordered_double_and_mask(__vec16_d a, __vec16_d b, __vec16_i1 mask) {
+  __vec16_i1 ret1;
+  __vec16_i1 ret2;
+  __vec16_i1 tmp_m = mask;
+  ret1 = _mm512_mask_cmpunord_pd_mask(mask, a.v1, b.v1);
+  ret2 = _mm512_mask_cmpunord_pd_mask(_mm512_kswapb(tmp_m, tmp_m), a.v2, b.v2);
   return _mm512_kmovlhb(ret1, ret2);
 }
 
@@ -3288,8 +3312,13 @@ __gather64_double(__vec16_i64 addr, __vec16_i1 mask)
   __vec16_i32 addr_lo, addr_hi;
   hilo2zmm(addr, addr_lo.v, addr_hi.v);
 
+#if __INTEL_COMPILER < 1500
+  ret.v1 = (__m512d)_mm512_i64extgather_pd ((__m512)addr_lo.v, 0, _MM_UPCONV_PD_NONE, 1, _MM_HINT_NONE);
+  ret.v2 = (__m512d)_mm512_i64extgather_pd ((__m512)addr_hi.v, 0, _MM_UPCONV_PD_NONE, 1, _MM_HINT_NONE);
+#else
   ret.v1 = _mm512_i64extgather_pd (addr_lo, 0, _MM_UPCONV_PD_NONE, 1, _MM_HINT_NONE);
   ret.v2 = _mm512_i64extgather_pd (addr_hi, 0, _MM_UPCONV_PD_NONE, 1, _MM_HINT_NONE);
+#endif
   return ret;
 }
 
@@ -3522,19 +3551,29 @@ static FORCEINLINE void __scatter_base_offsets32_double(void *base, uint32_t sca
 }
 
 static FORCEINLINE void __scatter64_float(__vec16_i64 ptrs, __vec16_f val, __vec16_i1 mask){
+#if __INTEL_COMPILER < 1500
+  #warning "__scatter64_float is slow due to outdated compiler"
+  __scatter_base_offsets64_float(0, 1, ptrs, val, mask);
+#else
   __vec16_i32 first8ptrs, second8ptrs;
   hilo2zmm(ptrs, first8ptrs.v, second8ptrs.v);
   _mm512_mask_i64scatter_pslo (0, mask, first8ptrs, val, 1);
   const __mmask8 mask_hi = 0x00FF & (mask >> 8);
   _mm512_mask_i64scatter_pslo (0, mask_hi, second8ptrs, _mm512_permute4f128_ps(val.v, _MM_PERM_DCDC), 1);
+#endif
 }
 
 static FORCEINLINE void __scatter64_i32(__vec16_i64 ptrs, __vec16_i32 val, __vec16_i1 mask) {
+#if __INTEL_COMPILER < 1500
+  #warning "__scatter64_i32 is slow due to outdated compiler"
+  __scatter_base_offsets64_i32(0, 1, ptrs, val, mask);
+#else
   __vec16_i32 first8ptrs, second8ptrs;
   hilo2zmm(ptrs, first8ptrs.v, second8ptrs.v);
   _mm512_mask_i64scatter_epi32lo (0, mask, first8ptrs, val, 1);
   const __mmask8 mask_hi = 0x00FF & (mask >> 8);
   _mm512_mask_i64scatter_epi32lo (0, mask_hi, second8ptrs, _mm512_permute4f128_epi32(val.v, _MM_PERM_DCDC), 1);
+#endif
 }
 
 static FORCEINLINE void __scatter64_i64(__vec16_i64 ptrs, __vec16_i64 val, __vec16_i1 mask) {

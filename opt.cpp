@@ -72,7 +72,11 @@
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) // LLVM 3.4+
   #include <llvm/Transforms/Instrumentation.h>
 #endif
-#include <llvm/PassManager.h>
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+  #include "llvm/PassManager.h"
+#else // LLVM 3.7+
+  #include "llvm/IR/LegacyPassManager.h"
+#endif
 #include <llvm/PassRegistry.h>
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) // LLVM 3.5+
     #include <llvm/IR/Verifier.h>
@@ -457,10 +461,17 @@ public:
     DebugPassManager():number(0){}
     void add(llvm::Pass * P, int stage);
     bool run(llvm::Module& M) {return PM.run(M);}
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     llvm::PassManager& getPM() {return PM;}
-
+#else // LLVM 3.7+
+    llvm::legacy::PassManager& getPM() {return PM;}
+#endif
 private:
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     llvm::PassManager PM;
+#else // LLVM 3.7+
+    llvm::legacy::PassManager PM;
+#endif
     int number;
 };
 
@@ -517,19 +528,21 @@ Optimize(llvm::Module *module, int optLevel) {
     optPM.add(new llvm::DataLayout(*g->target->getDataLayout()));
 #elif defined(LLVM_3_5)
     optPM.add(new llvm::DataLayoutPass(*g->target->getDataLayout()));
-#else // LLVM 3.6+
+#elif defined(LLVM_3_6)
     llvm::DataLayoutPass *dlp= new llvm::DataLayoutPass();
     dlp->doInitialization(*module);
     optPM.add(dlp);
-#endif
+#endif // LLVM 3.7+ doesn't have DataLayoutPass anymore.
 
     llvm::TargetMachine *targetMachine = g->target->GetTargetMachine();
 
 #ifdef LLVM_3_2
     optPM.add(new llvm::TargetTransformInfo(targetMachine->getScalarTargetTransformInfo(),
                                             targetMachine->getVectorTargetTransformInfo()));
-#else // LLVM 3.3+
+#elif defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6) // LLVM 3.3 - 3.6
     targetMachine->addAnalysisPasses(optPM.getPM());
+#else // LLVM 3.7+
+    optPM.getPM().add(createTargetTransformInfoWrapperPass(targetMachine->getTargetIRAnalysis()));
 #endif
 
     optPM.add(llvm::createIndVarSimplifyPass());

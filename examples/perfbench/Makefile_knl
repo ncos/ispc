@@ -1,0 +1,7 @@
+EXAMPLE=perbench
+CXX_SRC=perfbench.cpp perfbench_serial.cpp
+ISPC_SRC=perfbench.ispc
+ISPC_INTRINSICS=../intrinsics/knl.h
+ISPC_TARGET=generic-16
+
+include ../common_knl.mk

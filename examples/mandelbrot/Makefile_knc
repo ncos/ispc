@@ -1,0 +1,7 @@
+EXAMPLE=mandelbrot
+CXX_SRC=mandelbrot.cpp mandelbrot_serial.cpp
+ISPC_SRC=mandelbrot.ispc
+ISPC_INTRINSICS=../intrinsics/knc.h
+ISPC_TARGET=generic-16
+
+include ../common_knc.mk

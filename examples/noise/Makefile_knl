@@ -1,0 +1,7 @@
+EXAMPLE=noise
+CXX_SRC=noise.cpp noise_serial.cpp
+ISPC_SRC=noise.ispc
+ISPC_INTRINSICS=../intrinsics/knl.h
+ISPC_TARGET=generic-16
+
+include ../common_knl.mk

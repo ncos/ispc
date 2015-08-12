@@ -1,0 +1,7 @@
+EXAMPLE=sort
+CXX_SRC=sort.cpp sort_serial.cpp
+ISPC_SRC=sort.ispc
+ISPC_INTRINSICS=../intrinsics/knc.h
+ISPC_TARGET=generic-16
+
+include ../common_knc.mk

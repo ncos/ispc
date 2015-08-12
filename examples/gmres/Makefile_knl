@@ -1,0 +1,9 @@
+
+EXAMPLE=gmres
+CXX_SRC=algorithm.cpp main.cpp matrix.cpp mmio.c
+CC_SRC=mmio.c
+ISPC_SRC=matrix.ispc
+ISPC_INTRINSICS=../intrinsics/knl.h
+ISPC_TARGET=generic-16
+
+include ../common_knl.mk

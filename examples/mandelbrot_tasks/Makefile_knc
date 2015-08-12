@@ -1,0 +1,8 @@
+
+EXAMPLE=mandelbrot_tasks
+CXX_SRC=mandelbrot_tasks.cpp mandelbrot_tasks_serial.cpp
+ISPC_SRC=mandelbrot_tasks.ispc
+ISPC_INTRINSICS=../intrinsics/knc.h
+ISPC_TARGET=generic-16
+
+include ../common_knc.mk

@@ -1,0 +1,8 @@
+
+EXAMPLE=mandelbrot
+CPP_SRC=mandelbrot.cpp mandelbrot_serial.cpp
+ISPC_SRC=mandelbrot.ispc
+ISPC_IA_TARGETS=avx512knl-i32x16
+ISPC_ARM_TARGETS=neon
+
+include ../common.mk

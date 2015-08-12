@@ -1,0 +1,7 @@
+EXAMPLE=stencil
+CXX_SRC=stencil.cpp stencil_serial.cpp
+ISPC_SRC=stencil.ispc
+ISPC_INTRINSICS=../intrinsics/knl.h
+ISPC_TARGET=generic-16
+
+include ../common_knl.mk

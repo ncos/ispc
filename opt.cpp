@@ -585,7 +585,9 @@ Optimize(llvm::Module *module, int optLevel) {
         llvm::initializeScalarOpts(*registry);
         llvm::initializeIPO(*registry);
         llvm::initializeAnalysis(*registry);
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_3_7
         llvm::initializeIPA(*registry);
+#endif
         llvm::initializeTransformUtils(*registry);
         llvm::initializeInstCombine(*registry);
         llvm::initializeInstrumentation(*registry);
@@ -602,12 +604,19 @@ Optimize(llvm::Module *module, int optLevel) {
         // so we explicitly enable them here.
         // Need to keep sync with future LLVM change
         // An alternative is to call populateFunctionPassManager()
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_3_7
         optPM.add(llvm::createTypeBasedAliasAnalysisPass(), 190);
         optPM.add(llvm::createBasicAliasAnalysisPass());
+#else
+        optPM.add(llvm::createTypeBasedAAWrapperPass(), 190);
+        optPM.add(llvm::createBasicAAWrapperPass());
+#endif
         optPM.add(llvm::createCFGSimplificationPass());
-        // Here clang has an experimental pass SROAPass instead of
-        // ScalarReplAggregatesPass. We should add it in the future.
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_3_6
         optPM.add(llvm::createScalarReplAggregatesPass());
+#else
+        optPM.add(llvm::createSROAPass());
+#endif
         optPM.add(llvm::createEarlyCSEPass());
         optPM.add(llvm::createLowerExpectIntrinsicPass());
 
@@ -636,11 +645,17 @@ Optimize(llvm::Module *module, int optLevel) {
         // Max struct size threshold for scalar replacement is
         //    1) 4 fields (r,g,b,w)
         //    2) field size: vectorWidth * sizeof(float)
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_3_6        
         const int field_limit = 4;
         int sr_threshold = g->target->getVectorWidth() * sizeof(float) * field_limit;
+#endif
 
         // On to more serious optimizations
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_3_6
         optPM.add(llvm::createScalarReplAggregatesPass(sr_threshold));
+#else
+        optPM.add(llvm::createSROAPass());
+#endif
         optPM.add(llvm::createInstructionCombiningPass());
         optPM.add(llvm::createCFGSimplificationPass());
         optPM.add(llvm::createPromoteMemoryToRegisterPass());
@@ -673,7 +688,11 @@ Optimize(llvm::Module *module, int optLevel) {
         optPM.add(llvm::createInstructionCombiningPass(), 241);
         optPM.add(llvm::createJumpThreadingPass());
         optPM.add(llvm::createCFGSimplificationPass());
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_3_6
         optPM.add(llvm::createScalarReplAggregatesPass(sr_threshold));
+#else
+        optPM.add(llvm::createSROAPass());
+#endif
         optPM.add(llvm::createInstructionCombiningPass());
         optPM.add(llvm::createTailCallEliminationPass());
 
@@ -721,7 +740,11 @@ Optimize(llvm::Module *module, int optLevel) {
 
         optPM.add(llvm::createFunctionInliningPass());
         optPM.add(llvm::createArgumentPromotionPass());
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_3_6
         optPM.add(llvm::createScalarReplAggregatesPass(sr_threshold, false));
+#else
+        optPM.add(llvm::createSROAPass());
+#endif
         optPM.add(llvm::createInstructionCombiningPass());
         optPM.add(CreateInstructionSimplifyPass());
         optPM.add(llvm::createCFGSimplificationPass());
@@ -775,7 +798,11 @@ Optimize(llvm::Module *module, int optLevel) {
           optPM.add(llvm::createCFGSimplificationPass());
           // Here clang has an experimental pass SROAPass instead of
           // ScalarReplAggregatesPass. We should add it in the future.
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_3_6
           optPM.add(llvm::createScalarReplAggregatesPass());
+#else
+          optPM.add(llvm::createSROAPass());
+#endif
           optPM.add(llvm::createEarlyCSEPass());
           optPM.add(llvm::createLowerExpectIntrinsicPass());
           optPM.add(llvm::createTypeBasedAliasAnalysisPass());

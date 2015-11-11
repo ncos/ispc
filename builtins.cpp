@@ -279,7 +279,11 @@ lAddModuleSymbols(llvm::Module *module, SymbolTable *symbolTable) {
 
     llvm::Module::iterator iter;
     for (iter = module->begin(); iter != module->end(); ++iter) {
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_3_7 /* 3.2, 3.3, 3.4, 3.5, 3.6, 3.7 */
         llvm::Function *func = iter;
+#else /* LLVM 3.8+ */
+        llvm::Function *func = &*iter;
+#endif
         lCreateISPCSymbol(func, symbolTable);
     }
 }
@@ -295,7 +299,11 @@ static void
 lCheckModuleIntrinsics(llvm::Module *module) {
     llvm::Module::iterator iter;
     for (iter = module->begin(); iter != module->end(); ++iter) {
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_3_7 /* 3.2, 3.3, 3.4, 3.5, 3.6, 3.7 */
         llvm::Function *func = iter;
+#else /* LLVM 3.8+ */
+        llvm::Function *func = &*iter;
+#endif
         if (!func->isIntrinsic())
             continue;
 
@@ -1332,6 +1340,7 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
         }
         break;
     }
+#if ISPC_LLVM_VERSION >= ISPC_LLVM_3_7 // LLVM 3.7+
     case Target::KNL_AVX512: {
         switch (g->target->getVectorWidth()) {
         case 16:
@@ -1347,6 +1356,7 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
         }
         break;
     }
+#endif
     case Target::GENERIC: {
         switch (g->target->getVectorWidth()) {
         case 4:

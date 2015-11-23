@@ -4199,8 +4199,13 @@ void CWriter::visitCallInst(llvm::CallInst &I) {
 #else /* LLVM 3.3+ */
   const llvm::AttributeSet &PAL = I.getAttributes();
 #endif
+
+  printf("\n---");
+  I.dump();
+  printf("\nop = %d\n", I.getNumArgOperands());
+
   bool hasByVal = I.hasByValArgument();
-  bool isStructRet = I.hasStructRetAttr();
+  bool isStructRet = (I.getNumArgOperands() > 0) && I.hasStructRetAttr();
   if (isStructRet) {
     writeOperandDeref(I.getArgOperand(0));
     Out << " = ";

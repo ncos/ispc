@@ -1600,7 +1600,28 @@ lEmitBinaryArith(BinaryExpr::Op op, llvm::Value *value0, llvm::Value *value1,
             return NULL;
         }
 
-        return ctx->BinaryOperator(inst, value0, value1, LLVMGetName(opName, value0, value1));
+
+        //return ctx->BinaryOperator(inst, value0, value1, LLVMGetName(opName, value0, value1));
+
+        // ITODO
+
+        //Symbol *baseSym = GetBaseSymbol();
+        //llvm::Value *mask = lMaskForSymbol(baseSym, ctx);
+        llvm::Value *test = ctx->GetInternalMask();
+        llvm::Value *expr1 = ctx->BinaryOperator(inst, value0, value1, LLVMGetName(opName, value0, value1));
+        llvm::Value *expr2 = value0;
+
+        llvm::Value *resultPtr = ctx->AllocaInst(expr1->getType(), "selectexpr_tmp");
+        // Don't need to worry about masking here
+        ctx->StoreInst(expr2, resultPtr);
+        // Use masking to conditionally store the expr1 values
+        Assert(resultPtr->getType() ==
+           PointerType::GetUniform(type0)->LLVMType(g->ctx));
+        ctx->StoreInst(expr1, resultPtr, test, type0, PointerType::GetUniform(type0));
+        return ctx->LoadInst(resultPtr, "selectexpr_final");
+
+
+        //return lEmitVaryingSelect(ctx, mask, value0, expr2, type0)
     }
 }
 
